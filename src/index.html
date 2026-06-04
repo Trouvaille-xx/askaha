@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoloDB</title>
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">SD</div>
+        <div class="brand-text">
+          <div class="brand-title">SoloDB</div>
+          <div class="brand-sub">Database Agent</div>
+        </div>
+      </div>
+
+      <div class="topbar-center">
+        <div class="db-selector" id="dbSelector">
+          <span class="db-selector-label">当前数据库</span>
+          <span class="db-selector-value" id="activeDbLabel">未选择</span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <button class="btn btn-ghost" id="btnNewChat">新建会话</button>
+      </div>
+    </header>
+
+    <nav class="tabbar">
+      <button class="tab active" data-view="chat">对话</button>
+      <button class="tab" data-view="databases">数据库</button>
+      <button class="tab" data-view="llm">模型</button>
+      <button class="tab" data-view="skills">技能</button>
+    </nav>
+
+    <main class="content">
+      <!-- Chat view -->
+      <section class="view view-chat active" data-view="chat">
+        <div class="chat-thread" id="chatThread">
+          <div class="empty-state" id="chatEmpty">
+            <div class="empty-card">
+              <h2>开始一次数据库分析</h2>
+              <p>在下方输入你的任务, 智能体会自动规划 SQL、查询数据库并生成报告。</p>
+              <div class="empty-tips">
+                <div class="tip">示例: 统计近 30 天每天的订单数量与销售额</div>
+                <div class="tip">示例: 找出销量最高的 10 个商品及其类目</div>
+                <div class="tip">示例: 分析用户留存情况并生成周报</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="composer-inner">
+            <textarea id="composerInput" rows="2" placeholder="输入任务, 例如: 帮我分析最近一周的销售情况"></textarea>
+            <div class="composer-actions">
+              <div class="composer-meta" id="composerMeta">未配置模型</div>
+              <button class="btn btn-primary" id="btnSend">发送</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Databases view -->
+      <section class="view" data-view="databases">
+        <div class="page">
+          <div class="page-header">
+            <h2>数据库管理</h2>
+            <button class="btn btn-primary" id="btnAddDb">添加数据库</button>
+          </div>
+
+          <div class="db-list" id="dbList">
+            <div class="empty-block">暂无数据库, 点击右上角添加。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LLM view -->
+      <section class="view" data-view="llm">
+        <div class="page">
+          <div class="page-header">
+            <h2>模型设置</h2>
+            <button class="btn btn-primary" id="btnSaveLLM">保存</button>
+          </div>
+
+          <div class="form-card">
+            <div class="form-row">
+              <label>Base URL</label>
+              <input type="text" id="llmBaseURL" placeholder="https://api.openai.com/v1" />
+            </div>
+            <div class="form-row">
+              <label>API Key</label>
+              <input type="password" id="llmApiKey" placeholder="sk-..." />
+            </div>
+            <div class="form-row">
+              <label>Model</label>
+              <input type="text" id="llmModel" placeholder="gpt-4o-mini" />
+            </div>
+            <div class="form-row two-col">
+              <div>
+                <label>Temperature</label>
+                <input type="number" id="llmTemp" step="0.1" min="0" max="2" />
+              </div>
+              <div>
+                <label>Max Tokens</label>
+                <input type="number" id="llmMaxTokens" step="1" min="100" />
+              </div>
+            </div>
+            <div class="form-status" id="llmStatus"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Skills view -->
+      <section class="view" data-view="skills">
+        <div class="page">
+          <div class="page-header">
+            <h2>技能 (Skills)</h2>
+            <div class="row-gap">
+              <button class="btn" id="btnImportSkillFile">导入 .md</button>
+              <button class="btn btn-primary" id="btnImportSkill">导入文件夹</button>
+            </div>
+          </div>
+          <p class="muted">技能可以是单个 <code>.md</code> 文档 (带 frontmatter) 或一个文件夹 (含 <code>SKILL.md</code> / <code>skill.json</code> 与可选的 <code>.js</code> 脚本)。</p>
+          <div class="skill-list" id="skillList">
+            <div class="empty-block">暂无技能</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Add database modal -->
+  <div class="modal" id="modalDb" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>添加数据库</h3>
+        <button class="btn-icon" data-close>×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>显示名称</label>
+          <input type="text" id="dbName" placeholder="订单库" />
+        </div>
+        <div class="form-row">
+          <label>数据库类型</label>
+          <select id="dbType">
+            <option value="mysql">MySQL</option>
+            <option value="postgres">PostgreSQL</option>
+            <option value="sqlite">SQLite</option>
+            <option value="mssql">SQL Server</option>
+          </select>
+        </div>
+        <div class="form-row two-col" id="dbNetGroup">
+          <div>
+            <label>Host</label>
+            <input type="text" id="dbHost" placeholder="127.0.0.1" />
+          </div>
+          <div>
+            <label>Port</label>
+            <input type="number" id="dbPort" />
+          </div>
+        </div>
+        <div class="form-row" id="dbDbNameGroup">
+          <label>Database</label>
+          <input type="text" id="dbDatabase" placeholder="my_db" />
+        </div>
+        <div class="form-row two-col" id="dbUserGroup">
+          <div>
+            <label>User</label>
+            <input type="text" id="dbUser" />
+          </div>
+          <div>
+            <label>Password</label>
+            <input type="password" id="dbPassword" />
+          </div>
+        </div>
+        <div class="form-row" id="dbSqliteGroup" hidden>
+          <label>SQLite 文件路径</label>
+          <input type="text" id="dbSqlitePath" placeholder="C:\\path\\to\\file.db" />
+        </div>
+        <div class="form-status" id="dbFormStatus"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-ghost" id="btnTestDb">测试连接</button>
+        <button class="btn btn-primary" id="btnSaveDb">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" hidden></div>
+
+  <!-- 检查点模态 (智能体执行中弹出) -->
+  <div class="modal" id="modalCp" hidden>
+    <div class="modal-backdrop" data-cp-cancel></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3 id="cpTitle">智能体等待确认</h3>
+        <span class="cp-step" id="cpStep"></span>
+      </div>
+      <div class="modal-body" id="cpBody"></div>
+      <div class="modal-footer" id="cpFooter">
+        <button class="btn btn-ghost" id="cpCancel">取消任务</button>
+        <button class="btn btn-primary" id="cpConfirm">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 诊断指示器: 显示 JS 加载进度, 出问题时方便定位 -->
+  <div id="diag" style="position:fixed;bottom:6px;right:6px;background:#fde68a;color:#1f2328;padding:3px 8px;font:11px ui-monospace,Consolas,monospace;border-radius:6px;z-index:9999;">diag: pending</div>
+
+  <script src="js/app.js?v=6"></script>
+</body>
+</html>
