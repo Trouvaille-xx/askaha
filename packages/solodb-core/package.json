@@ -1,0 +1,30 @@
+{
+  "name": "solodb-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Askaha 的确定性内核: 流程卡引擎 + 只读 SQL 策略 + 取数护栏 + 规则文本。零依赖, 宿主无关。",
+  "main": "index.js",
+  "type": "commonjs",
+  "exports": {
+    ".": "./index.js",
+    "./engine": "./engine.js",
+    "./data-peek": "./data-peek.js",
+    "./sql-guard": "./sql-guard.js",
+    "./prompt": "./prompt.js",
+    "./prompt-sets": "./prompt-sets.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "engine.js",
+    "data-peek.js",
+    "sql-guard.js",
+    "prompt.js",
+    "prompt-sets.js",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test \"../../test/solodb-core.test.js\""
+  },
+  "license": "MIT"
+}

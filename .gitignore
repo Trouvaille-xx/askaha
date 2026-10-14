@@ -11,3 +11,14 @@ config.local.json
 .appdata/
 .electron-cache/
 install*.log
+
+# 开发期的本地工作目录: 探针脚本、截图、记忆日志
+# 里面有内网数据库主机名与真实业务数据截图, 不进版本库
+.workbuddy/
+.probe-*.js
+# 抓窗口截图 / 裁剪放大 / 量像素位置 的辅助脚本, 只在本机看 UI 时用
+.cap.ps1
+.crop.ps1
+.span.ps1
+# 从活的注册表反向生成文档的脚本 (产物 .md 才进库)
+.gen-*.js

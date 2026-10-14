@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Agent 核心流程",
+    "subtitle": "一句话从进入主进程到交付的完整路径 · 闸门分类、循环取数、只读拦截、协议收尾",
+    "output": "docs/solodb-agent-flow.html",
+    "quality_profile": "showcase",
+    "animation": "none",
+    "viewBox": [920, 950],
+    "views": [
+      { "id": "classify", "label": "先定性", "focus": ["user", "main", "agent", "guard"], "note": "表名单预检之后，意图闸门把话分成闲聊、取数、跑流程卡三类。" },
+      { "id": "loop", "label": "循环取数", "focus": ["agent", "tool", "guard", "store"], "note": "每一步由模型决定下一个动作，取数必须穿过只读闸门。" },
+      { "id": "deliver", "label": "收尾交付", "focus": ["agent", "main", "user"], "note": "收尾只能由动作协议表达，报告再回到界面。" }
+    ]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "一句话提问" },
+    { "id": "main", "type": "backend", "label": "主进程", "sublabel": "配置 · 会话 · 密钥" },
+    { "id": "agent", "type": "backend", "label": "分析 Agent", "sublabel": "工具循环 · 12 个工具" },
+    { "id": "guard", "type": "security", "label": "只读单条闸门", "sublabel": "唯一收口" },
+    { "id": "tool", "type": "cloud", "label": "模型客户端", "sublabel": "OpenAI 兼容" },
+    { "id": "store", "type": "database", "label": "企业数据库", "sublabel": "4 种方言 · 只读账号" }
+  ],
+  "segments": [
+    { "from": 140, "to": 320, "label": "受理与定性" },
+    { "from": 340, "to": 700, "label": "取数循环" },
+    { "from": 720, "to": 860, "label": "收尾与交付" }
+  ],
+  "messages": [
+    { "id": "ask", "from": "user", "to": "main", "y": 170, "label": "提一句任务", "variant": "default" },
+    { "id": "scope", "from": "main", "to": "agent", "y": 208, "label": "读可访问表白名单", "variant": "default" },
+    { "id": "scopeBack", "from": "agent", "to": "main", "y": 240, "label": "只取表与字段，不拉数据", "variant": "return" },
+    { "id": "classify", "from": "main", "to": "tool", "y": 278, "label": "意图闸门：闲聊 / 取数 / 流程卡", "variant": "security" },
+    { "id": "classifyBack", "from": "tool", "to": "main", "y": 310, "label": "判不出来也归入取数", "variant": "return" },
+    { "id": "loadSkill", "from": "main", "to": "agent", "y": 348, "label": "装载会话与技能正文", "variant": "default" },
+    { "id": "step", "from": "agent", "to": "tool", "y": 386, "label": "第 1 步：现在该做什么", "variant": "emphasis" },
+    { "id": "wantSql", "from": "tool", "to": "agent", "y": 418, "label": "决定调 sql 工具", "variant": "return" },
+    { "id": "submit", "from": "agent", "to": "guard", "y": 456, "label": "提交 SQL", "variant": "emphasis" },
+    { "id": "reject", "from": "guard", "to": "agent", "y": 488, "label": "拦下危险调用与多语句", "variant": "security" },
+    { "id": "errorBack", "from": "guard", "to": "agent", "y": 520, "label": "转成 {error} 回灌，整轮不中止", "variant": "return" },
+    { "id": "step2", "from": "agent", "to": "tool", "y": 558, "label": "第 2 步：换一条安全写法", "variant": "emphasis" },
+    { "id": "query", "from": "agent", "to": "guard", "y": 596, "label": "单条只读 SELECT", "variant": "emphasis" },
+    { "id": "pass", "from": "guard", "to": "store", "y": 634, "label": "放行 · 按表名定库", "variant": "emphasis" },
+    { "id": "rows", "from": "store", "to": "agent", "y": 666, "label": "结果集", "variant": "return" },
+    { "id": "step3", "from": "agent", "to": "tool", "y": 704, "label": "第 3 步：够不够下结论", "variant": "emphasis" },
+    { "id": "hadEnough", "from": "tool", "to": "agent", "y": 736, "label": "够了，按协议收尾", "variant": "return" },
+    { "id": "finish", "from": "agent", "to": "main", "y": 774, "label": "finish · 报告已成形", "variant": "emphasis" },
+    { "id": "deliver", "from": "main", "to": "user", "y": 812, "label": "报告 / 表格 / 流程卡", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "main", "from": 160, "to": 820, "type": "backend" },
+    { "participant": "agent", "from": 200, "to": 782, "type": "backend" },
+    { "participant": "guard", "from": 448, "to": 642, "type": "security" },
+    { "participant": "tool", "from": 270, "to": 744, "type": "cloud" },
+    { "participant": "store", "from": 630, "to": 674, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "判不出来一律取数",
+      "items": [
+        "闸门只做三分类：闲聊、取数、跑流程卡",
+        "格式不对、调用失败、判不出来 —— 全部按取数走",
+        "把真需求当闲聊回掉是功能故障，多走一遍只是慢一点"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "失败是信息，不是事故",
+      "items": [
+        "工具失败一律转成 {error} 回灌，整轮不中止",
+        "上图那条拦截不是终点 —— 模型拿到错误后自己换写法",
+        "模型编了不存在的工具名，回灌纠正后继续试"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "一轮什么时候结束",
+      "items": [
+        "finish 或 reply 是唯一正常收尾，由模型自己决定",
+        "步数跑满不判死：压缩上下文接着开下一轮，最多 12 轮",
+        "只有真撞上轮次上限，才如实报截断"
+      ]
+    }
+  ]
+}

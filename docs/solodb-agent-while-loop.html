@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SoloDB · Agent 核心 while 循环</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
+    --ink:#e6edf3; --muted:#8b949e; --dim:#6e7681;
+    --blue:#58a6ff; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --purple:#bc8cff; --cyan:#39c5cf;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif;
+    font-size:14px; line-height:1.6; padding:28px 32px 60px;
+  }
+  h1{font-size:22px;margin:0 0 4px;font-weight:650;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:22px}
+  .sub code{background:var(--panel2);padding:1px 6px;border-radius:4px;color:var(--cyan);font-size:12.5px}
+  .wrap{max-width:1180px;margin:0 auto}
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin:0 0 18px;font-size:12.5px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:22px;height:3px;border-radius:2px;display:inline-block}
+  svg{display:block;width:100%;height:auto;background:var(--panel);
+      border:1px solid var(--line);border-radius:10px}
+  .note{margin-top:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px 16px}
+  .card h3{margin:0 0 9px;font-size:13.5px;font-weight:640;display:flex;align-items:center;gap:8px}
+  .card h3::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--blue)}
+  .card.g h3::before{background:var(--green)}
+  .card.a h3::before{background:var(--amber)}
+  .card.p h3::before{background:var(--purple)}
+  .card ul{margin:0;padding-left:17px;color:var(--muted);font-size:12.8px}
+  .card li{margin:4px 0}
+  .card li b{color:var(--ink);font-weight:600}
+  code{font-family:'Cascadia Code',Consolas,monospace;font-size:12px}
+  .k{color:var(--cyan);background:var(--panel2);padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SoloDB · Agent 核心 while 循环</h1>
+  <div class="sub">
+    源码位置 <code>lib/agent-loop.js</code> 的 <code>AgentLoop.run()</code>（359–530 行）。
+    三个 Agent（分析 / 搭建 / 测试）共用这一份实现，循环体只有 <b>6 步</b>。
+  </div>
+
+  <div class="legend">
+    <span><i class="sw" style="background:#58a6ff"></i>循环主干</span>
+    <span><i class="sw" style="background:#bc8cff"></i>回边（这就是"while"）</span>
+    <span><i class="sw" style="background:#f85149"></i>出口 / 提前返回</span>
+    <span><i class="sw" style="background:#3fb950"></i>不消耗预算的纠正路径</span>
+  </div>
+
+  <svg viewBox="0 0 1120 940" role="img" aria-label="Agent 核心 while 循环流程图">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#58a6ff"/>
+      </marker>
+      <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#bc8cff"/>
+      </marker>
+      <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#f85149"/>
+      </marker>
+      <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#3fb950"/>
+      </marker>
+      <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/>
+      </marker>
+      <style>
+        .bx{fill:#1c2128;stroke:#30363d;stroke-width:1.4;rx:9}
+        .bx.entry{fill:#12261c;stroke:#2ea043}
+        .bx.exit{fill:#2a1416;stroke:#f85149}
+        .bx.dec{fill:#21262d;stroke:#d29922;stroke-width:1.5}
+        .bx.tool{fill:#161f2e;stroke:#388bfd}
+        .bx.retry{fill:#12261c;stroke:#3fb950}
+        .t{fill:#e6edf3;font-size:13.5px;font-weight:600;font-family:-apple-system,'Segoe UI','Noto Sans SC',sans-serif}
+        .ts{fill:#8b949e;font-size:11.5px;font-family:-apple-system,'Segoe UI','Noto Sans SC',sans-serif}
+        .tc{fill:#39c5cf;font-size:10.5px;font-family:Consolas,monospace}
+        .el{fill:#58a6ff;stroke:none}
+        .elp{fill:#bc8cff;stroke:none}
+        .elr{fill:#f85149;stroke:none}
+        .elg{fill:#3fb950;stroke:none}
+        .elm{fill:#8b949e;stroke:none}
+        .lab{fill:#8b949e;font-size:11.5px;font-family:-apple-system,'Segoe UI','Noto Sans SC',sans-serif}
+        .labr{fill:#f85149;font-size:11.5px;font-family:-apple-system,'Segoe UI','Noto Sans SC',sans-serif}
+        .labg{fill:#3fb950;font-size:11.5px;font-family:-apple-system,'Segoe UI','Noto Sans SC',sans-serif}
+        .labp{fill:#bc8cff;font-size:12px;font-weight:600;font-family:-apple-system,'Segoe UI','Noto Sans SC',sans-serif}
+        .stepn{fill:#0d1117;stroke:#58a6ff;stroke-width:1.2}
+        .stepnt{fill:#58a6ff;font-size:11px;font-weight:700;font-family:Consolas,monospace}
+        .phase{fill:none;stroke:#30363d;stroke-width:1.3;stroke-dasharray:5 4;rx:11}
+        .phaset{fill:#6e7681;font-size:11px;font-weight:600;letter-spacing:1px;font-family:-apple-system,'Segoe UI','Noto Sans SC',sans-serif}
+        .sep{stroke:#21262d;stroke-width:1}
+      </style>
+    </defs>
+
+    <!-- 循环体虚线框 -->
+    <rect class="phase" x="150" y="96" width="470" height="742"/>
+    <text class="phaset" x="150" y="88">for (;;)  ── 没有步数上限，靠里面的 return 退出</text>
+
+    <!-- 入口 -->
+    <rect class="bx entry" x="235" y="26" width="300" height="46" rx="9"/>
+    <text class="t" x="385" y="47" text-anchor="middle">run() 被调用</text>
+    <text class="ts" x="385" y="63" text-anchor="middle">记 _t0 · 取一次工具 schema（循环外）</text>
+
+    <line x1="385" y1="72" x2="385" y2="118" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#ah)"/>
+
+    <!-- ① 取消 -->
+    <rect class="bx dec" x="245" y="118" width="280" height="44" rx="9"/>
+    <text class="t" x="385" y="139" text-anchor="middle">① 用户点了停止？</text>
+    <text class="ts" x="385" y="155" text-anchor="middle">isCancelled()</text>
+    <line x1="525" y1="140" x2="700" y2="140" stroke="#f85149" stroke-width="1.5" marker-end="url(#ahr)"/>
+    <text class="labr" x="612" y="132" text-anchor="middle">是</text>
+    <rect class="bx exit" x="700" y="118" width="200" height="44" rx="9"/>
+    <text class="t" x="800" y="139" text-anchor="middle">cancelled</text>
+    <text class="ts" x="800" y="155" text-anchor="middle">半成品交回用户</text>
+
+    <line x1="385" y1="162" x2="385" y2="192" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#ah)"/>
+
+    <!-- ② 预算 -->
+    <rect class="bx dec" x="245" y="192" width="280" height="52" rx="9"/>
+    <text class="t" x="385" y="213" text-anchor="middle">② 预算还有吗？</text>
+    <text class="ts" x="385" y="230" text-anchor="middle">步数 ≤ 0 或 时间 ≤ 0</text>
+    <line x1="525" y1="218" x2="700" y2="218" stroke="#f85149" stroke-width="1.5" marker-end="url(#ahr)"/>
+    <text class="labr" x="612" y="210" text-anchor="middle">用尽</text>
+    <rect class="bx exit" x="700" y="196" width="200" height="44" rx="9"/>
+    <text class="t" x="800" y="217" text-anchor="middle">budget</text>
+    <text class="ts" x="800" y="233" text-anchor="middle">上层决定续不续轮</text>
+
+    <line x1="385" y1="244" x2="385" y2="274" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#ah)"/>
+
+    <!-- ③ 压缩 -->
+    <rect class="bx" x="225" y="274" width="320" height="56" rx="9"/>
+    <text class="t" x="385" y="295" text-anchor="middle">③ 压缩上下文 + 重建进度账</text>
+    <text class="ts" x="385" y="312" text-anchor="middle">旧工具结果折成存根，账进系统提示</text>
+    <text class="tc" x="385" y="326" text-anchor="middle">compactMessages() → systemWithLedger()</text>
+
+    <line x1="385" y1="330" x2="385" y2="360" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#ah)"/>
+
+    <!-- ④ 调模型 -->
+    <rect class="bx tool" x="225" y="360" width="320" height="56" rx="9"/>
+    <text class="t" x="385" y="381" text-anchor="middle">④ 调模型（每轮一次往返）</text>
+    <text class="ts" x="385" y="398" text-anchor="middle">[system] + 整个 messages 数组</text>
+    <text class="tc" x="385" y="412" text-anchor="middle">llm.chatStep(msgs, tools)</text>
+
+    <!-- ④ 的异常出口 -->
+    <line x1="545" y1="388" x2="700" y2="388" stroke="#f85149" stroke-width="1.5" marker-end="url(#ahr)"/>
+    <text class="labr" x="620" y="380" text-anchor="middle">抛错</text>
+    <rect class="bx exit" x="700" y="366" width="200" height="44" rx="9"/>
+    <text class="t" x="800" y="387" text-anchor="middle">error</text>
+    <text class="ts" x="800" y="403" text-anchor="middle">取消造成的失败除外</text>
+
+    <line x1="385" y1="416" x2="385" y2="446" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#ah)"/>
+
+    <!-- ⑤ 判定 -->
+    <rect class="bx dec" x="225" y="446" width="320" height="60" rx="9"/>
+    <text class="t" x="385" y="467" text-anchor="middle">⑤ 模型给动作了吗？</text>
+    <text class="ts" x="385" y="484" text-anchor="middle">_resolveTurn() 解析出原生调用或文本方言</text>
+    <text class="tc" x="385" y="498" text-anchor="middle">native / DSML / JSON 三路兜底</text>
+
+    <!-- ⑤a 没有动作 → done -->
+    <line x1="545" y1="466" x2="700" y2="466" stroke="#f85149" stroke-width="1.5" marker-end="url(#ahr)"/>
+    <text class="labr" x="620" y="458" text-anchor="middle">没动作</text>
+    <rect class="bx exit" x="700" y="444" width="200" height="44" rx="9"/>
+    <text class="t" x="800" y="465" text-anchor="middle">done</text>
+    <text class="ts" x="800" y="481" text-anchor="middle">它自己决定收尾了</text>
+
+    <!-- ⑤b 工具名不存在 → retry（不消耗预算） -->
+    <line x1="385" y1="506" x2="385" y2="540" stroke="#3fb950" stroke-width="1.6" marker-end="url(#ahg)"/>
+    <text class="labg" x="396" y="528" text-anchor="start">编了个不存在的工具</text>
+    <rect class="bx retry" x="225" y="540" width="320" height="50" rx="9"/>
+    <text class="t" x="385" y="561" text-anchor="middle">纠正：回灌"没这个工具"</text>
+    <text class="ts" x="385" y="578" text-anchor="middle">retries++ · 不消耗预算 · 超 3 次中止</text>
+
+    <!-- ⑥ 执行工具 -->
+    <line x1="385" y1="590" x2="385" y2="622" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#ah)"/>
+    <rect class="bx tool" x="225" y="622" width="320" height="62" rx="9"/>
+    <text class="t" x="385" y="643" text-anchor="middle">⑥ 执行工具 + 回灌结果</text>
+    <text class="ts" x="385" y="660" text-anchor="middle">steps++ · 只读的并发、有副作用的串行</text>
+    <text class="tc" x="385" y="675" text-anchor="middle">_executeTurn() → _ack()</text>
+
+    <!-- ⑥ 的终结工具出口 -->
+    <line x1="545" y1="646" x2="700" y2="646" stroke="#f85149" stroke-width="1.5" marker-end="url(#ahr)"/>
+    <text class="labr" x="620" y="638" text-anchor="middle">命中终结工具</text>
+    <rect class="bx exit" x="700" y="624" width="200" height="44" rx="9"/>
+    <text class="t" x="800" y="645" text-anchor="middle">done</text>
+    <text class="ts" x="800" y="661" text-anchor="middle">finish / reply / ask_*</text>
+
+    <!-- ⑥ 之后的取消检查 -->
+    <line x1="385" y1="684" x2="385" y2="716" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#ah)"/>
+    <rect class="bx dec" x="245" y="716" width="280" height="44" rx="9"/>
+    <text class="t" x="385" y="737" text-anchor="middle">执行中被点了停止？</text>
+    <text class="ts" x="385" y="753" text-anchor="middle">工具跑到一半也要停</text>
+    <line x1="525" y1="738" x2="700" y2="738" stroke="#f85149" stroke-width="1.5" marker-end="url(#ahr)"/>
+    <text class="labr" x="612" y="730" text-anchor="middle">是</text>
+    <rect class="bx exit" x="700" y="716" width="200" height="44" rx="9"/>
+    <text class="t" x="800" y="737" text-anchor="middle">cancelled</text>
+    <text class="ts" x="800" y="753" text-anchor="middle">同样交回半成品</text>
+
+    <!-- ===== 回边：这就是 while ===== -->
+    <!-- 从主干竖线上（取消检查之后）分出去，而不是从判定框上 —— 从框上出发
+         会被读成"停止检查的产物"，但它其实是"这一轮做完了，回开头再来一遍"。
+         竖线走 x=232：必须在左侧说明框的右边，否则会从框上穿过去。 -->
+    <path d="M385,700 L232,700 L232,302 L225,302"
+          fill="none" stroke="#bc8cff" stroke-width="2.4"
+          marker-end="url(#ahp)" stroke-linejoin="round"/>
+    <circle cx="232" cy="700" r="3.5" fill="#bc8cff"/>
+    <rect x="62" y="486" width="158" height="76" rx="8" fill="#1b1626" stroke="#bc8cff" stroke-width="1.4"/>
+    <text class="labp" x="141" y="508" text-anchor="middle">回到循环开头</text>
+    <text class="ts" x="141" y="527" text-anchor="middle">重新判定 ①②</text>
+    <text class="ts" x="141" y="543" text-anchor="middle">再压一次上下文</text>
+    <text class="ts" x="141" y="559" text-anchor="middle">再调一次模型</text>
+
+    <!-- 步骤编号圆标 -->
+    <circle class="stepn" cx="205" cy="140" r="12"/><text class="stepnt" x="205" y="144" text-anchor="middle">1</text>
+    <circle class="stepn" cx="205" cy="218" r="12"/><text class="stepnt" x="205" y="222" text-anchor="middle">2</text>
+    <circle class="stepn" cx="205" cy="302" r="12"/><text class="stepnt" x="205" y="306" text-anchor="middle">3</text>
+    <circle class="stepn" cx="205" cy="388" r="12"/><text class="stepnt" x="205" y="392" text-anchor="middle">4</text>
+    <circle class="stepn" cx="205" cy="476" r="12"/><text class="stepnt" x="205" y="480" text-anchor="middle">5</text>
+    <circle class="stepn" cx="205" cy="653" r="12"/><text class="stepnt" x="205" y="657" text-anchor="middle">6</text>
+
+    <!-- 右侧：预算 nudge 说明 -->
+    <line x1="150" y1="792" x2="1120" y2="792" class="sep"/>
+    <text class="phaset" x="150" y="816">⑥ 里发生的一件容易被忽略的事</text>
+    <rect class="bx" x="150" y="830" width="450" height="86" rx="9" stroke="#d29922"/>
+    <text class="t" x="168" y="852">剩余 ≤ 2 步时，系统会插一句话（nudge）</text>
+    <text class="ts" x="168" y="872">还有下一轮 → "别急着收尾，跑完会自动接着开下一轮"</text>
+    <text class="ts" x="168" y="890">没有下一轮 → "立刻收敛，不要再开新的探索"</text>
+    <text class="tc" x="168" y="907">budget.continues 决定说哪句</text>
+
+    <rect class="bx" x="640" y="830" width="460" height="86" rx="9" stroke="#bc8cff"/>
+    <text class="t" x="658" y="852">账与计数器的归属</text>
+    <text class="ts" x="658" y="872">每次调用后 _lastLlmMs / _lastUsage 被 _ack 写到 assistant 消息上</text>
+    <text class="ts" x="658" y="890">它随对话史落盘 → 事后能按轮复盘（本次改动新增）</text>
+    <text class="tc" x="658" y="907">elapsedMs / usage 不上网关，见 llm.wireMessages()</text>
+  </svg>
+
+  <div class="note">
+    <div class="card">
+      <h3>循环的形状：无上限 + 7 个 return</h3>
+      <ul>
+        <li>写法是 <span class="k">for (;;)</span> —— <b>没有步数上限写在循环条件里</b></li>
+        <li>退出全靠 <span class="k">return this._result()</span>，一共 <b>7 处</b></li>
+        <li>真正防死循环的是开头的 ①② 两道判定</li>
+        <li>这是有意的：让"什么时候停"由策略决定，不由计数器隐式决定</li>
+      </ul>
+    </div>
+    <div class="card g">
+      <h3>纠正路径不消耗预算</h3>
+      <ul>
+        <li>模型编工具名 → <span class="k">continue</span> 回开头，<b>不 steps++</b></li>
+        <li>理由：它没真的做成任何事，不该扣预算</li>
+        <li>但不扣就得限次数 —— <span class="k">MAX_CONSECUTIVE_RETRIES = 3</span></li>
+        <li>不设限的话一个持续编工具名的模型会让循环永远转、内存一路涨</li>
+      </ul>
+    </div>
+    <div class="card a">
+      <h3>每轮都在重算的三样东西</h3>
+      <ul>
+        <li><b>上下文压缩</b>：超阈值就把旧结果折成存根</li>
+        <li><b>进度账</b>：从现存存根反推，无条件更新（不是"折了才更新"）</li>
+        <li><b>系统提示</b>：<span class="k">systemWithLedger()</span> 每轮现拼</li>
+        <li>用户原话全程逐字不动 —— 账进系统提示而不是消息数组</li>
+      </ul>
+    </div>
+    <div class="card p">
+      <h3>工具执行的并发规则</h3>
+      <ul>
+        <li>一轮里有多个调用 <b>且全部只读</b> → <span class="k">Promise.all</span> 并发</li>
+        <li>只要有一个有副作用 → 整轮串行</li>
+        <li>实际很少触发：多数轮只有 1 个调用</li>
+        <li>工具抛错也入账（<span class="k">finally</span> 里记）—— "又慢又挂"的最该被看到</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

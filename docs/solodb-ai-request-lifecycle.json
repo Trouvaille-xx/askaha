@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "SoloDB AI 搭建：一次请求的完整流程",
+    "locale": "zh-CN",
+    "output": "docs/solodb-ai-request-lifecycle.html",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "happy-path",
+        "label": "顺利跑通",
+        "focus": ["send", "build", "finish", "selftest", "passed"],
+        "note": "一句话需求 → 搭卡 → 自测跑通 → 落盘交付。正常只走这一条。"
+      },
+      {
+        "id": "waiting",
+        "label": "停下来等人",
+        "focus": ["build", "ask"],
+        "note": "模型拿不准时把问题抛回用户，这一轮就此结束；答完接着跑。"
+      },
+      {
+        "id": "recovery",
+        "label": "跑不通怎么办",
+        "focus": ["selftest", "budget"],
+        "note": "自测不通走「诊断 → 改卡 → 重测」的循环；步数用尽会自动续轮。"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "user", "label": "用户" },
+    { "id": "agent", "label": "模型自主工作" },
+    { "id": "verify", "label": "独立验证" },
+    { "id": "deliver", "label": "交付" },
+    { "id": "exceptions", "label": "插进来的事 + 修复循环", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "p1", "label": "开工", "fromCol": 0, "toCol": 0 },
+    { "id": "p2", "label": "搭卡", "fromCol": 1, "toCol": 2, "variant": "emphasis" },
+    { "id": "p3", "label": "验证并交付", "fromCol": 3, "toCol": 4, "variant": "dashed" }
+  ],
+  "mainPath": ["send", "build", "finish", "selftest", "passed"],
+  "nodes": [
+    {
+      "id": "send",
+      "lane": "user",
+      "col": 0,
+      "type": "external",
+      "label": "发出这句话",
+      "sublabel": "输入框回车",
+      "tag": "入口"
+    },
+    {
+      "id": "build",
+      "lane": "agent",
+      "col": 1,
+      "type": "backend",
+      "label": "模型自主工作",
+      "sublabel": "想一步做一步，最多 40 步",
+      "tag": "核心",
+      "width": 150
+    },
+    {
+      "id": "finish",
+      "lane": "agent",
+      "col": 3,
+      "type": "security",
+      "label": "自认搭完了",
+      "sublabel": "必须已体检并试跑过",
+      "tag": "闸门"
+    },
+    {
+      "id": "selftest",
+      "lane": "verify",
+      "col": 4,
+      "type": "backend",
+      "label": "独立自测",
+      "sublabel": "另起测试 Agent 跑真数据",
+      "tag": "验证",
+      "width": 150
+    },
+    {
+      "id": "passed",
+      "lane": "deliver",
+      "col": 4,
+      "type": "database",
+      "label": "跑通了 · 落盘存档",
+      "sublabel": "交付一张可复用的卡",
+      "tag": "产物",
+      "width": 140
+    },
+
+    {
+      "id": "ask",
+      "lane": "exceptions",
+      "col": 2,
+      "type": "frontend",
+      "label": "把问题抛回来",
+      "sublabel": "等你回答，这轮就此结束",
+      "tag": "暂停",
+      "width": 140
+    },
+    {
+      "id": "budget",
+      "lane": "exceptions",
+      "col": 4,
+      "type": "messagebus",
+      "label": "自测不通就修",
+      "sublabel": "诊断 → 改卡 → 重测，最多 4 轮",
+      "tag": "修复",
+      "width": 150
+    }
+  ],
+  "edges": [
+    { "from": "send", "to": "build", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top" },
+    { "from": "build", "to": "finish", "variant": "emphasis" },
+    { "from": "finish", "to": "selftest", "label": "自动拉起", "variant": "emphasis" },
+    { "from": "selftest", "to": "passed", "variant": "emphasis" },
+
+    { "from": "build", "to": "ask", "label": "拿不准", "variant": "security", "route": "drop", "fromSide": "bottom", "toSide": "top" },
+    { "from": "ask", "to": "build", "label": "答完接着搭", "variant": "dashed", "route": "return-left", "fromSide": "left", "toSide": "left" },
+
+    { "from": "selftest", "to": "budget", "label": "没跑通就回去修", "variant": "security", "route": "outside-right", "fromSide": "right", "toSide": "right" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模型自主工作是核心",
+      "items": [
+        "模型自己决定「想一步、做一步」，不逐步征求同意",
+        "每做一步都实时画到画板上 —— 用户看得见它在干什么",
+        "最多 40 步一轮；步数用尽但卡没搭完，自动再给一轮（最多 3 轮）"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "两个闸门拦着它不许乱收尾",
+      "items": [
+        "收尾闸门：没体检 + 没试跑过就不许 finish，答它「先别收尾」",
+        "提问也是终结：拿不准时把问题抛回用户，不替用户猜"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "修复循环最多 4 轮",
+      "items": [
+        "测试 Agent 只诊断不改卡 —— 它手里没有「用户当初要什么」",
+        "改卡交回还记得需求的搭建 Agent，带原上下文，不用重问一遍",
+        "四轮还不通就如实交回，并说清卡在哪一步没通"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SoloDB 产品架构",
+    "subtitle": "Windows 桌面端数据库智能体 · 一次提问依次穿过界面、主进程、智能体运行时、只读防线，才碰到数据库",
+    "output": "docs/solodb-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1020, 760],
+    "views": [
+      { "id": "main-path", "label": "主链路", "focus": ["ui", "main", "loop", "gate", "database"], "note": "从界面一句话到数据库只读结果，中间只经过智能体运行时这一层。" },
+      { "id": "deterministic", "label": "确定性通路", "focus": ["loop", "engine", "gate", "database"], "note": "流程卡由 DAG 写死，模型只在决定用不用它时被调用一次。" },
+      { "id": "outside", "label": "出网与外部", "focus": ["loop", "model", "provider"], "note": "唯一离开本机的能力是调用模型与 MCP 服务。" }
+    ]
+  },
+  "components": [
+    { "id": "ui", "type": "frontend", "label": "界面 · 4 个视图", "sublabel": "对话 / 数据空间 / 配置 / 设置", "pos": [30, 200], "size": [200, 76] },
+    { "id": "main", "type": "backend", "label": "主进程", "sublabel": "配置 · 会话 · 密钥 · 全部 IPC", "pos": [260, 200], "size": [200, 76] },
+    { "id": "loop", "type": "backend", "label": "工具循环 AgentLoop", "sublabel": "三套工具集共用 · 39 个工具", "pos": [490, 200], "size": [200, 76] },
+    { "id": "gate", "type": "security", "label": "只读单条闸门", "sublabel": "唯一收口 · 只放行一条", "pos": [720, 200], "size": [200, 76] },
+    { "id": "engine", "type": "backend", "label": "流程引擎执行器", "sublabel": "走 DAG · 零模型调用", "pos": [490, 60], "size": [200, 76] },
+    { "id": "database", "type": "database", "label": "企业数据库", "sublabel": "MySQL · PG · SQLite · SQL Server", "pos": [720, 60], "size": [200, 76] },
+    { "id": "model", "type": "cloud", "label": "模型客户端", "sublabel": "OpenAI 兼容 · 重试与截断", "pos": [490, 460], "size": [200, 76] },
+    { "id": "provider", "type": "external", "label": "模型 / MCP 服务", "sublabel": "工作区之外的一切", "pos": [490, 600], "size": [200, 76] }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "只读防线 · 任何查询都绕不过", "wraps": ["gate", "database"] }
+  ],
+  "connections": [
+    { "id": "ui-main", "from": "ui", "to": "main", "variant": "default" },
+    { "id": "main-loop", "from": "main", "to": "loop", "variant": "emphasis" },
+    { "id": "loop-gate", "from": "loop", "to": "gate", "variant": "emphasis" },
+    { "id": "gate-database", "from": "gate", "to": "database", "variant": "emphasis" },
+    { "id": "loop-engine", "from": "loop", "to": "engine", "variant": "emphasis" },
+    { "id": "loop-model", "from": "loop", "to": "model", "label": "每步一次模型", "variant": "emphasis", "labelAt": [590, 400] },
+    { "id": "model-provider", "from": "model", "to": "provider", "label": "HTTPS · 出网", "variant": "dashed", "labelDy": 42 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "三个 Agent 身份",
+      "items": [
+        "分析 Agent：取数、出报告，12 个工具",
+        "搭建 / 诊断 Agent：改图、独立验证，19 + 8 个工具",
+        "三者共用同一个工具循环，差异只在提示词、工具集与终结条件"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "卡外 / 卡内",
+      "items": [
+        "卡外：分析、搭建、诊断，每一步由模型决定",
+        "卡内：流程引擎走 DAG，零模型调用",
+        "同一输入必然同一结论，结论才能被人复述"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "只读承诺",
+      "items": [
+        "只发单条只读语句，绝不修改数据",
+        "三层防线依次生效：提示词、闸门、白名单",
+        "应用层校验替代不了数据库的只读账号"
+      ]
+    }
+  ]
+}

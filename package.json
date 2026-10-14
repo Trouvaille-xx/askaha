@@ -1,19 +1,23 @@
 {
-  "name": "solodb",
-  "version": "0.1.0",
-  "description": "SoloDB - Database intelligent agent desktop app",
+  "name": "askaha",
+  "version": "0.3.2",
+  "description": "Askaha - Database intelligent agent desktop app",
   "main": "main.js",
   "scripts": {
     "start": "set electron_config_cache=%cd%\\.electron-cache&& electron .",
-    "dev": "set electron_config_cache=%cd%\\.electron-cache&& electron . --dev"
+    "dev": "set electron_config_cache=%cd%\\.electron-cache&& electron . --dev",
+    "start:compat": "set electron_config_cache=%cd%\\.electron-cache&& electron . --no-sandbox",
+    "dev:compat": "set electron_config_cache=%cd%\\.electron-cache&& electron . --dev --no-sandbox",
+    "test": "node --test \"test/**/*.test.js\""
   },
-  "author": "SoloDB",
+  "author": "Askaha",
   "license": "MIT",
   "devDependencies": {
     "electron": "^31.0.0"
   },
   "dependencies": {
     "@azure/msal-node": "^5.2.2",
+    "echarts": "^6.1.0",
     "mssql": "^11.0.0",
     "mysql2": "^3.10.0",
     "pg": "^8.11.5",

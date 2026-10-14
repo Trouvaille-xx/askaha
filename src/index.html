@@ -3,136 +3,796 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SoloDB</title>
-  <link rel="stylesheet" href="styles/main.css" />
+  <title>Askaha</title>
+  <link rel="stylesheet" href="styles/main.css?v=26" />
 </head>
 <body>
   <div class="app">
-    <header class="topbar">
+    <!-- ============ 左侧一级菜单 ============ -->
+    <aside class="sidenav" id="sidenav">
       <div class="brand">
-        <div class="brand-mark">SD</div>
+        <div class="brand-mark">ASK</div>
         <div class="brand-text">
-          <div class="brand-title">SoloDB</div>
-          <div class="brand-sub">Database Agent</div>
+          <div class="brand-title">Askaha</div>
+          <div class="brand-sub">假如数据会说话···</div>
         </div>
       </div>
 
-      <div class="topbar-center">
-        <div class="db-selector" id="dbSelector">
-          <span class="db-selector-label">当前数据库</span>
-          <span class="db-selector-value" id="activeDbLabel">未选择</span>
+      <nav class="sidenav-nav">
+        <div class="sidenav-group">
+          <div class="sidenav-group-title">工作</div>
+          <button class="nav-item active" data-view="chat" title="对话">
+            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.6a2.1 2.1 0 0 1 2.1-2.1h6.8a2.1 2.1 0 0 1 2.1 2.1v3.9a2.1 2.1 0 0 1-2.1 2.1H7l-4.5 2.9z"/></svg>
+            <span class="nav-label">对话</span>
+          </button>
+          <button class="nav-item" data-view="space" title="数据空间">
+            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 2.6h4.4v4.4H2.6zM9 2.6h4.4v4.4H9zM2.6 9h4.4v4.4H2.6zM9 9h4.4v4.4H9z"/></svg>
+            <span class="nav-label">数据空间</span>
+          </button>
         </div>
+
+        <!-- 配置: 原来这里是 4 个菜单项, 现在收成一项。
+             点进去是同一个页面, 数据库/流程引擎/技能/外部工具 变成顶部 4 个页签。
+             这里不再放「配置」分组标题 —— 否则就成了 配置 / 配置 的重复。 -->
+        <div class="sidenav-group">
+          <button class="nav-item" data-view="config" title="配置">
+            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2l5.5 2.9L8 8 2.5 5.1z"/><path d="M2.5 8.2L8 11.1l5.5-2.9"/><path d="M2.5 11.4L8 14.3l5.5-2.9"/></svg>
+            <span class="nav-label">配置</span>
+          </button>
+          <!-- 知识库: 一级入口 (不是配置的子页) —— 它是高频功能, 值得单独一项。
+               点进去顶部两个页签: 知识库管理 / 问答管理。 -->
+          <button class="nav-item" data-view="knowledge" title="知识库">
+            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.1 3.4h3.8a1.7 1.7 0 0 1 1.1.5 1.7 1.7 0 0 1 1.1-.5h3.8v8.6H8.6a1.4 1.4 0 0 0-1.4 1.1 1.4 1.4 0 0 0-1.4-1.1H3.1z"/><path d="M8 3.9v9.2"/></svg>
+            <span class="nav-label">知识库</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- 历史对话: 从对话页左栏搬到菜单里。
+           默认只露 5 条, 剩下的点「查看更多」展开, 免得把侧边栏撑爆。 -->
+      <div class="sidenav-convs" id="sidenavConvs">
+        <div class="sidenav-convs-head">
+          <span class="sidenav-convs-title">历史对话</span>
+          <button class="btn-icon" id="btnNewChatSide" title="新建会话">＋</button>
+        </div>
+        <div class="conv-list" id="convList"></div>
+        <button class="sidenav-more" id="btnConvMore" hidden></button>
       </div>
 
-      <div class="topbar-right">
-        <button class="btn btn-ghost" id="btnNewChat">新建会话</button>
+      <div class="sidenav-foot">
+        <button class="nav-item" data-view="settings" title="设置">
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 5h10.8M2.6 11h10.8"/><circle cx="6.2" cy="5" r="1.7"/><circle cx="9.8" cy="11" r="1.7"/></svg>
+          <span class="nav-label">设置</span>
+        </button>
+        <button class="nav-item nav-collapse" id="btnNavCollapse" title="收起菜单">
+          <svg class="nav-icon nav-collapse-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.8 3.8L5.6 8l4.2 4.2"/></svg>
+          <span class="nav-label">收起菜单</span>
+        </button>
       </div>
-    </header>
-
-    <nav class="tabbar">
-      <button class="tab active" data-view="chat">对话</button>
-      <button class="tab" data-view="databases">数据库</button>
-      <button class="tab" data-view="llm">模型</button>
-      <button class="tab" data-view="skills">技能</button>
-    </nav>
+    </aside>
 
     <main class="content">
-      <!-- Chat view -->
+      <!-- ============ 对话: 三栏工作台 ============ -->
       <section class="view view-chat active" data-view="chat">
-        <div class="chat-thread" id="chatThread">
-          <div class="empty-state" id="chatEmpty">
-            <div class="empty-card">
-              <h2>开始一次数据库分析</h2>
-              <p>在下方输入你的任务, 智能体会自动规划 SQL、查询数据库并生成报告。</p>
-              <div class="empty-tips">
-                <div class="tip">示例: 统计近 30 天每天的订单数量与销售额</div>
-                <div class="tip">示例: 找出销量最高的 10 个商品及其类目</div>
-                <div class="tip">示例: 分析用户留存情况并生成周报</div>
-              </div>
-            </div>
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">对话</div></div>
+          <div class="subnav-actions">
+            <!-- 右栏收起后的还原按钮。它长在二级条上 (不是对话抬头里)，所以空态下也看得见 ——
+                 对话抬头在空态是隐藏的，而「产物」开关正好长在抬头里：空聊天时把产物栏
+                 收起来，那个开关跟着抬头一起消失，就没有任何入口把它再打开了。 -->
+            <button class="wb-restore" id="btnArtRestore" hidden title="展开产物侧栏">‹ 产物</button>
+            <button class="btn btn-ghost" id="btnNewChat">新建会话</button>
           </div>
         </div>
-        <div class="composer">
-          <div class="composer-inner">
-            <textarea id="composerInput" rows="2" placeholder="输入任务, 例如: 帮我分析最近一周的销售情况"></textarea>
-            <div class="composer-actions">
-              <div class="composer-meta" id="composerMeta">未配置模型</div>
-              <button class="btn btn-primary" id="btnSend">发送</button>
+        <div class="workbench" id="workbench">
+          <!-- 历史对话已搬到左侧菜单, 这里只剩「对话流 + 产物」两栏 -->
+
+          <!-- 中: 对话流 -->
+          <div class="wb-pane wb-main" id="wbMain">
+            <!-- 对话抬头: 这段对话只在选中的库里找表。
+                 空态时不显示 —— 那时候选库的胶囊长在输入框上面 (见下面的 .composer-top),
+                 因为"选哪些库"属于"开一段新对话"这件事, 不该一直占着对话上方那一条。 -->
+            <div class="conv-head" id="convHead" hidden>
+              <div class="pick pick-db pick-db-sm" id="dbPickHead" data-pick="dbhead" tabindex="0" role="button" aria-haspopup="listbox" title="这段对话只在选中的库里找表">
+                <svg class="pick-db-icon" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="3.9" rx="5.1" ry="2.1"/><path d="M2.9 3.9v8.2c0 1.16 2.28 2.1 5.1 2.1s5.1-.94 5.1-2.1V3.9"/><path d="M2.9 8c0 1.16 2.28 2.1 5.1 2.1s5.1-.94 5.1-2.1"/></svg>
+                <span class="pick-label">全部数据库</span>
+                <svg class="pick-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>
+                <div class="pick-menu" role="listbox" hidden></div>
+              </div>
+              <!-- 知识库选择 (多选): 跟选库胶囊同行, 同一套下拉样式 -->
+              <div class="pick pick-kb pick-db-sm" id="kbPickHead" data-pick="kbhead" tabindex="0" role="button" aria-haspopup="listbox" hidden title="这段对话检索哪些知识库 (可多选)">
+                <span class="pick-label">知识库: 默认</span>
+                <svg class="pick-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>
+                <div class="pick-menu" role="listbox" hidden></div>
+              </div>
+              <!-- 产物侧栏的开关, 跟在选库胶囊同一行、靠最右 (原来在二级条里) -->
+              <button class="conv-art-btn" id="btnArtToggle" type="button" title="显示 / 隐藏产物侧栏" aria-pressed="true">产物</button>
+            </div>
+            <div class="chat-thread" id="chatThread">
+              <!-- 空态由 app.js 的 emptyState() 生成, 这里不留静态副本。
+                   原来这儿有一份, 但没有任何代码引用它 —— renderChat() 一进来就
+                   thread.innerHTML = '', 直接把它抹掉。两份文案还已经飘了:
+                   这里写"并把结论画成图表", 真正在用的那份写"并生成报告"。
+                   用户看到的永远是后者, 改这一份等于没改。 -->
+            </div>
+            <!-- 执行状态条: 只在跑任务时出现。
+                 放在对话流和输入框之间 —— 用户盯着看的是对话底部,
+                 状态放这儿才在他视线里, 而不是缩在某个角落。 -->
+            <div class="run-status" id="runStatus" hidden>
+              <span class="run-status-wave" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="run-status-text" id="runStatusText">深度探索中</span>
+              <span class="run-status-timer" id="runTimer">00:00:00</span>
+              <button class="run-stop" id="btnStopRun" type="button" title="停止这次任务">停止</button>
+            </div>
+            <div class="composer">
+              <!-- 高度拖拽条。放在输入框**上面** ——
+                   原生 textarea 的 resize 手柄在右下角, 而右下角正是"发送"
+                   按钮所在的地方, 想拉高度很容易误点发送。放上面还有个好处:
+                   往上拖 = 变高, 方向跟视觉一致。 -->
+              <div class="composer-grip" id="composerGrip" role="separator" aria-label="拖动调整输入框高度" title="拖动调整输入框高度">
+                <span class="composer-grip-bar"></span>
+              </div>
+              <!-- 空态才有: 选库胶囊。参考图里"项目 + 模式"那一排的位置。
+                   对话一开始它就被收进上面的抬头 —— 那是**另一个**元素, 由 renderDbPicks
+                   一起刷。用两个独立节点而不是把同一个节点搬来搬去: 搬的过程会把展开
+                   状态和事件绑定一起带跑, 那种 bug 很难查。 -->
+              <div class="composer-top" id="composerTop" hidden>
+                <div class="pick pick-db" id="dbPick" data-pick="db" tabindex="0" role="button" aria-haspopup="listbox" title="这段对话只在选中的库里找表">
+                  <svg class="pick-db-icon" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="3.9" rx="5.1" ry="2.1"/><path d="M2.9 3.9v8.2c0 1.16 2.28 2.1 5.1 2.1s5.1-.94 5.1-2.1V3.9"/><path d="M2.9 8c0 1.16 2.28 2.1 5.1 2.1s5.1-.94 5.1-2.1"/></svg>
+                  <span class="pick-label">全部数据库</span>
+                  <svg class="pick-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>
+                  <div class="pick-menu" role="listbox" hidden></div>
+                </div>
+                <!-- 知识库选择 (多选): 跟选库胶囊**同一行**、同一套下拉样式 -->
+                <div class="pick pick-kb" id="kbPick" data-pick="kb" tabindex="0" role="button" aria-haspopup="listbox" hidden title="这段对话检索哪些知识库 (可多选)">
+                  <span class="pick-label">知识库: 默认</span>
+                  <svg class="pick-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>
+                  <div class="pick-menu" role="listbox" hidden></div>
+                </div>
+              </div>
+              <!-- 整块输入区是一张卡片: 输入框和下面那排控件共用同一个白底和圆角。
+                   以前是"灰底输入框 + 卡片外一排按钮"两截, 现在是参考那种一体式。 -->
+              <div class="composer-inner">
+                <textarea id="composerInput" rows="2" placeholder="输入任务, 例如: 帮我分析最近一周的销售情况"></textarea>
+                <!-- 斜杠指令的自动补全菜单。纯 UX —— 手打 /sql … 回车照样走 (解析在主进程)。 -->
+                <div class="slash-menu" id="slashMenu" role="listbox" hidden></div>
+                <div class="composer-actions">
+                  <!-- 左: 决定"AI 怎么挑表"的模式, 以及配置出问题时的提示。
+                       右: 模型 / 上下文占用 / 发送 —— 跟参考一致, 动作类控件归右侧。 -->
+                  <div class="composer-side composer-left">
+                    <!-- 自动 / 手动模式。原生的 select 在这里有两个毛病: 它只能显示
+                         一行字, 而"手动/自动"的差别需要一句解释; 而且系统下拉的
+                         观感跟这个界面完全脱节。改成自己画的下拉。 -->
+                    <div class="pick pick-mode" id="modePick" data-pick="mode" tabindex="0" role="button" aria-haspopup="listbox" title="AI 怎么决定查哪些表">
+                      <span class="pick-label">手动模式</span>
+                      <svg class="pick-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>
+                      <div class="pick-menu" role="listbox" hidden></div>
+                    </div>
+                    <!-- 只在"配置缺东西"时才有字, 正常时为空 —— 模型名右边那个下拉
+                         已经写了, 这里再写一遍"模型: xxx · Base: xxx"是纯噪声。 -->
+                    <div class="composer-meta" id="composerMeta"></div>
+                  </div>
+                  <div class="composer-side composer-right">
+                    <div class="pick pick-model" id="modelPick" data-pick="model" tabindex="0" role="button" aria-haspopup="listbox" title="这次任务用哪个模型">
+                      <span class="pick-label">未配置模型</span>
+                      <svg class="pick-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg>
+                      <div class="pick-menu" role="listbox" hidden></div>
+                    </div>
+                    <!-- 上下文占用圆环。tabindex 让它能键盘聚焦 —— hover 和 focus
+                         共用同一个浮层, 只用鼠标才能看的话键盘用户就看不到。 -->
+                    <div class="ctx-ring" id="ctxRing" tabindex="0" role="img">
+                      <svg class="ctx-svg" viewBox="0 0 36 36" aria-hidden="true">
+                        <circle class="ctx-track" cx="18" cy="18" r="15.5"></circle>
+                        <circle class="ctx-fill" id="ctxFill" cx="18" cy="18" r="15.5"></circle>
+                      </svg>
+                      <span class="ctx-pct" id="ctxPct"></span>
+                      <div class="ctx-tip" id="ctxTip" hidden></div>
+                    </div>
+                    <!-- 发送。图标按钮而不是文字按钮 —— 文字按钮在一体式卡片右下角
+                         会显得很重。忙碌态换成转圈, 由 CSS 按 .busy 切。 -->
+                    <button class="send-btn" id="btnSend" type="button" title="发送" aria-label="发送">
+                      <svg class="send-arrow" viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M10 16.5V4M4.3 9.7 10 4l5.7 5.7"/>
+                      </svg>
+                      <span class="send-spin" aria-hidden="true"></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <!-- 空态才有: 示例。做成可点的 —— 原来是一行死文字, 看着像说明,
+                   其实用户最想做的就是"照着来一个"。 -->
+              <div class="composer-tips" id="composerTips" hidden></div>
+              <!-- 本会话累计。轮数和步数从消息里数, token 从落盘的 stats 读 ——
+                   token 是唯一推导不出来的量 (它在模型响应的 usage 里, 消息里没有)。 -->
+              <div class="conv-stats" id="convStats"></div>
             </div>
           </div>
+
+          <div class="wb-gutter" data-gutter="right" title="拖动调整宽度"></div>
+
+          <!-- 右: 产物预览 -->
+          <aside class="wb-pane wb-right" id="wbRight">
+            <div class="wb-head">
+              <span class="wb-title">产物</span>
+              <div class="head-actions">
+                <button class="btn-icon" id="btnArtFull" data-icon="full" title="全屏预览"></button>
+                <button class="btn-icon" id="btnArtCollapse" title="收起侧栏">›</button>
+              </div>
+            </div>
+            <div class="art-tabs" id="artTabs"></div>
+            <div class="art-body" id="artBody"></div>
+          </aside>
         </div>
       </section>
 
-      <!-- Databases view -->
-      <section class="view" data-view="databases">
-        <div class="page">
-          <div class="page-header">
-            <h2>数据库管理</h2>
-            <button class="btn btn-primary" id="btnAddDb">添加数据库</button>
+      <!-- ============ 数据空间 ============ -->
+      <section class="view" data-view="space">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">数据空间</div></div>
+          <div class="subnav-actions">
+            <button class="btn btn-ghost" id="btnSpaceExpand">全部展开</button>
+            <button class="btn" id="btnRefreshSpace">刷新</button>
           </div>
+        </div>
 
+        <!-- 目录层级: 每一层都能点, 用来跳回去 -->
+        <nav class="space-crumbs" id="spaceCrumbs"></nav>
+
+        <!-- 左: 文件目录树 (可折叠)   右: 文件预览 -->
+        <div class="space-browser">
+          <aside class="space-tree" id="spaceTree">
+            <div class="empty-block">正在读取…</div>
+          </aside>
+          <section class="space-preview" id="spacePreview"></section>
+        </div>
+      </section>
+
+      <!-- ============ 数据库 (配置 · 第 1 个页签) ============ -->
+      <section class="view" data-view="databases">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">配置</div></div>
+          <!-- 4 个页签由 JS 统一渲染 (renderConfigTabs), 免得在这 4 个视图里各抄一份 -->
+          <div class="subnav-tabs" data-config-tabs></div>
+          <div class="subnav-actions"><button class="btn btn-primary" id="btnAddDb">添加数据库</button></div>
+        </div>
+        <div class="page">
           <div class="db-list" id="dbList">
             <div class="empty-block">暂无数据库, 点击右上角添加。</div>
           </div>
         </div>
       </section>
 
-      <!-- LLM view -->
-      <section class="view" data-view="llm">
-        <div class="page">
-          <div class="page-header">
-            <h2>模型设置</h2>
-            <button class="btn btn-primary" id="btnSaveLLM">保存</button>
+      <!-- ============ 流程引擎 (配置 · 第 2 个页签) ============ -->
+      <section class="view" data-view="engines">
+        <!-- 卡片墙: 列出现有流程卡, 第一张是"新建"虚线卡 -->
+        <div class="eng-gallery-view" id="engineGallery">
+          <div class="subnav">
+            <div class="subnav-head"><div class="subnav-title">配置</div></div>
+            <div class="subnav-tabs" data-config-tabs></div>
+            <div class="subnav-actions">
+              <button class="btn btn-sm" id="btnEngImport" title="从别人的流程卡包（.solodb-cards.json）导入">导入</button>
+              <button class="btn btn-sm" id="btnEngExport" title="把流程卡导成卡包，发给别人">导出</button>
+              <button class="btn btn-sm" id="btnEngCfgSync" title="重新读一遍「数据库」页的配置，把新加的库和表同步过来">同步库表配置</button>
+            </div>
+          </div>
+          <!-- 这句说明原来在二级条里, 但它会把 4 个页签整体往右推 ——
+               切页签时整条 bar 会横跳。挪到内容区位置就固定了。 -->
+          <p class="eng-gallery-hint">问题命中某张卡时会照卡里写死的路线自动跑完，中途不再问 SQL。</p>
+          <div class="eng-gallery" id="engineGalleryGrid"></div>
+        </div>
+
+        <!-- 画板: 整页铺开, 选中节点时右侧才滑出配置 -->
+        <div class="eng-board-view" id="engineBoard" hidden>
+          <div class="eng-board-bar">
+            <button class="eng-back" id="btnBackGallery">← 流程卡</button>
+            <div class="engine-head" id="engineHead"></div>
           </div>
 
-          <div class="form-card">
-            <div class="form-row">
-              <label>Base URL</label>
-              <input type="text" id="llmBaseURL" placeholder="https://api.openai.com/v1" />
-            </div>
-            <div class="form-row">
-              <label>API Key</label>
-              <input type="password" id="llmApiKey" placeholder="sk-..." />
-            </div>
-            <div class="form-row">
-              <label>Model</label>
-              <input type="text" id="llmModel" placeholder="gpt-4o-mini" />
-            </div>
-            <div class="form-row two-col">
-              <div>
-                <label>Temperature</label>
-                <input type="number" id="llmTemp" step="0.1" min="0" max="2" />
+          <div class="eng-board-main" id="engBoardMain">
+            <!-- 画板这一侧: 与 AI 侧边栏按 7:3 分, AI 打开时它自然让出右边 -->
+            <div class="eng-canvas-col">
+              <div class="engine-canvas" id="engineCanvas">
+                <div class="engine-world" id="engineWorld">
+                  <svg class="engine-edges" id="engineEdges"></svg>
+                  <div class="engine-nodes" id="engineNodes"></div>
+                </div>
               </div>
-              <div>
-                <label>Max Tokens</label>
-                <input type="number" id="llmMaxTokens" step="1" min="100" />
+
+              <!-- 画板正下方: 只留「加节点」。AI 按钮搬到顶栏右上角了 (见 renderEngineHead) -->
+              <div class="eng-fab-wrap">
+                <div class="eng-add-menu" id="engAddMenu" hidden>
+                  <button class="eng-add-item" data-add="input"><b>输入</b><span>声明这张卡要问用户什么</span></button>
+                  <button class="eng-add-item" data-add="query"><b>取数</b><span>连库跑一条写死的 SQL</span></button>
+                  <button class="eng-add-item" data-add="condition"><b>条件</b><span>按规则分岔，走成立或不成立</span></button>
+                  <button class="eng-add-item" data-add="output"><b>输出</b><span>把结果拼成给用户看的结论</span></button>
+                </div>
+                <div class="eng-fab-row">
+                  <button class="eng-fab-icon" id="btnAddNodeFab" title="加节点" aria-label="加节点">
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M8 3v10M3 8h10" stroke="#fff" stroke-width="1.8" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
               </div>
+
+              <div class="engine-legend">
+                <span class="eng-dot eng-dot-input"></span>输入
+                <span class="eng-dot eng-dot-query"></span>取数
+                <span class="eng-dot eng-dot-condition"></span>条件
+                <span class="eng-dot eng-dot-output"></span>输出
+                <span class="engine-legend-sep"></span>
+                滚轮缩放 · 空白处拖动平移 · 从节点右侧圆点拖出连线 · 选中后 Delete 删除
+              </div>
+
+              <!-- 系统检测: 默认收成左下角一个小条, 点开才展开 (展开时压在图例上) -->
+              <div class="eng-issues-dock" id="engIssuesDock" hidden>
+                <button class="eng-issues-head" id="btnIssuesToggle" title="系统检测">
+                  <span class="eng-issues-mark"></span>
+                  <span class="eng-issues-tip" id="engIssuesTip">检测到问题</span>
+                  <span class="eng-issues-chev">▾</span>
+                </button>
+                <div class="eng-issues-body" id="engineIssues"></div>
+              </div>
+
+              <!-- 节点配置: 选中节点时从画板右侧滑出 -->
+              <aside class="engine-inspector" id="engineInspector" hidden></aside>
             </div>
-            <div class="form-status" id="llmStatus"></div>
+
+            <!-- AI 侧边栏: 点 AI 按钮后滑出, 对话式地把这张卡搭出来 -->
+            <aside class="eng-ai-panel" id="engAiPanel" hidden>
+              <!-- 左边缘的拖拽把手: 绝对定位在面板内侧, 所以面板一收起它跟着消失,
+                   不用另外去同步显示隐藏。拖它左右移动即可改面板宽度。 -->
+              <div class="eng-ai-gutter" id="engAiGutter" role="separator" aria-label="拖动调整 AI 面板宽度" title="拖动调整 AI 面板宽度"></div>
+              <div class="eng-ai-bar">
+                <div class="eng-ai-title">AI 搭建</div>
+                <button class="eng-ai-cfg" id="btnAiConfig" title="配置 AI 可用的库和表">配置</button>
+                <button class="eng-ai-close" id="btnAiClose" title="收起">×</button>
+              </div>
+              <!-- 三个页签: 对话 / 规划 / 历史。切换占满内容区 (规划/历史不再压在对话上面)。 -->
+              <div class="eng-ai-tabs" id="engAiTabs">
+                <button class="eng-ai-tab on" data-aitab="chat">对话</button>
+                <button class="eng-ai-tab" data-aitab="plan">规划</button>
+                <button class="eng-ai-tab" data-aitab="history">历史</button>
+              </div>
+              <!-- 对话: 范围 + 消息 + 输入框 -->
+              <div class="eng-ai-view" id="engAiViewChat">
+                <div class="eng-ai-scope" id="engAiScope"></div>
+                <div class="eng-ai-log" id="engAiLog"></div>
+                <div class="eng-ai-compose">
+                  <div class="composer-grip composer-grip-sm" id="engAiGrip" role="separator" aria-label="拖动调整输入框高度" title="拖动调整输入框高度">
+                    <span class="composer-grip-bar"></span>
+                  </div>
+                  <textarea id="engAiInput" rows="3" placeholder="用大白话说清你的判断逻辑，例如：查这批采购订单明细的入库状态，如果明细已入库但待对账入库单没有数据，就报存在问题，其他报正常"></textarea>
+                  <div class="eng-ai-compose-bar">
+                    <button class="btn btn-sm btn-ghost" id="btnAiReset" title="开一条新对话">新建对话</button>
+                    <button class="btn btn-sm btn-danger eng-ai-stop" id="btnAiStop" title="停止正在跑的自测">停止</button>
+                    <button class="btn btn-sm btn-primary" id="btnAiSend">发送</button>
+                  </div>
+                </div>
+              </div>
+              <!-- 规划 -->
+              <div class="eng-ai-view" id="engAiViewPlan" hidden>
+                <div class="eng-ai-plan" id="engAiPlan"></div>
+              </div>
+              <!-- 历史 -->
+              <div class="eng-ai-view" id="engAiViewHistory" hidden>
+                <div class="eng-ai-history" id="engAiHistory"></div>
+              </div>
+            </aside>
           </div>
         </div>
       </section>
 
-      <!-- Skills view -->
-      <section class="view" data-view="skills">
-        <div class="page">
-          <div class="page-header">
-            <h2>技能 (Skills)</h2>
-            <div class="row-gap">
-              <button class="btn" id="btnImportSkillFile">导入 .md</button>
-              <button class="btn btn-primary" id="btnImportSkill">导入文件夹</button>
+      <!-- ============ 知识库: 两个页签 = 知识库管理 / 问答管理 ============ -->
+      <section class="view" data-view="knowledge">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">知识库</div></div>
+          <div class="subnav-tabs" id="kbTabs">
+            <button class="subnav-tab active" data-kbtab="manage">知识库管理</button>
+            <button class="subnav-tab" data-kbtab="qa">问答管理</button>
+          </div>
+          <div class="subnav-actions" id="kbActions"></div>
+        </div>
+
+        <!-- 面板一: 知识库 > 文件夹 > 文档 (三层下钻, 列表式) -->
+        <div class="kb-panel" id="kbPanel">
+          <div class="kb-main">
+            <div class="kb-main-head" id="kbMainHead"></div>
+            <!-- 导入进度条: 只在导入时出现 -->
+            <div class="kb-import-bar" id="kbImportBar" hidden></div>
+            <div class="kb-table-wrap" id="kbTableWrap"></div>
+          </div>
+        </div>
+
+        <!-- 面板二: 问答管理 (数据飞轮) -->
+        <div class="kb-panel" id="qaPanel" hidden>
+          <div class="qa-bar" id="qaBar"></div>
+          <div class="qa-list" id="qaList"></div>
+        </div>
+      </section>
+
+      <!-- ============ 配置 · 知识库配置 ============ -->
+      <section class="view" data-view="knowledgecfg">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">配置</div></div>
+          <div class="subnav-tabs" data-config-tabs></div>
+          <div class="subnav-actions"><button class="btn btn-primary" id="btnKbCfgSave">保存</button></div>
+        </div>
+        <div class="page"><div id="kbCfgBody"></div></div>
+      </section>
+
+      <!-- ============ 设置: 三个子页在顶部二级条上 ============ -->
+      <section class="view" data-view="settings">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">设置</div></div>
+          <div class="subnav-tabs" id="settingsNav">
+            <button class="subnav-tab active" data-pane="model">模型</button>
+            <button class="subnav-tab" data-pane="prompt">提示词</button>
+            <button class="subnav-tab" data-pane="general">通用</button>
+            <button class="subnav-tab" data-pane="about">关于</button>
+          </div>
+        </div>
+
+        <div class="settings-body" id="settingsBody">
+            <!-- ---- 模型 ---- -->
+            <div class="settings-pane active" data-pane="model">
+              <div class="page-header">
+                <h2>模型</h2>
+                <button class="btn btn-primary" id="btnAddModel">新增模型</button>
+              </div>
+              <p class="muted">可以配多个模型 (比如一个贵而准的、一个便宜而快的), 在对话页随时切换。改完立即生效, 不用重启。</p>
+              <div class="model-list" id="modelList"></div>
+            </div>
+
+            <!-- ---- 提示词 ---- -->
+            <div class="settings-pane" data-pane="prompt">
+              <div class="page-header">
+                <h2>提示词</h2>
+                <div class="row-gap">
+                  <button class="btn btn-ghost" id="btnPromptPreview">预览全文</button>
+                  <button class="btn btn-ghost" id="btnPromptReset">恢复出厂</button>
+                  <button class="btn btn-primary" id="btnPromptSave">保存</button>
+                </div>
+              </div>
+              <p class="muted">
+                这个软件里有三个 Agent, 各有一套系统提示词 —— 上面切换。
+                每套都按模块拼装: 点左侧模块名切换编辑对象; 改动只影响被改的那一块,
+                没动过的跟随出厂版本。带
+                <span class="lock-tag">锁</span>
+                的模块是协议与安全边界, 只能改文字、不能关闭。
+              </p>
+              <div class="prompt-sets" id="promptSets"></div>
+              <div class="prompt-set-hint" id="promptSetHint"></div>
+              <div class="prompt-layout">
+                <div class="prompt-modules" id="promptModules"></div>
+                <div class="prompt-editor">
+                  <div class="pe-head">
+                    <div class="pe-title" id="peTitle">—</div>
+                    <label class="switch" title="停用这个模块">
+                      <input type="checkbox" id="peEnabled" />
+                      <span></span>
+                    </label>
+                  </div>
+                  <div class="pe-summary" id="peSummary"></div>
+                  <textarea id="peText" spellcheck="false"></textarea>
+                  <div class="pe-foot">
+                    <span class="form-hint" id="peHint"></span>
+                    <button class="btn btn-ghost btn-sm" id="peRestore">恢复本模块</button>
+                  </div>
+                </div>
+              </div>
+              <div class="form-status" id="promptStatus"></div>
+            </div>
+
+            <!-- ---- 通用 ---- -->
+            <div class="settings-pane" data-pane="general">
+              <div class="page-header">
+                <h2>通用</h2>
+                <button class="btn btn-primary" id="btnSaveGeneral">保存</button>
+              </div>
+              <p class="muted">智能体跑一轮任务时的行为参数。</p>
+              <div class="form-card">
+                <div class="form-row">
+                  <label>单轮最大步数</label>
+                  <input type="number" id="genMaxSteps" step="1" min="3" max="60" />
+                  <div class="form-hint">一轮里最多允许模型做多少步 (查表、跑 SQL、出报告都算一步)。调小可以防止跑偏, 调大给复杂分析留余地。默认 16。</div>
+                </div>
+                <div class="form-row">
+                  <label>自动续轮上限</label>
+                  <input type="number" id="genMaxRounds" step="1" min="1" max="50" />
+                  <div class="form-hint">步数跑满但活没干完时, 会自动压缩上下文接着开下一轮, 不再半途强制收尾。这里管的是"最多接几轮"。常规任务连一轮都跑不满, 撞上它多半是真陷入循环了。默认 12。</div>
+                </div>
+                <div class="form-row">
+                  <label>回灌历史轮数</label>
+                  <input type="number" id="genHistoryTurns" step="1" min="0" max="30" />
+                  <div class="form-hint">每次任务带给模型的最近几条对话。条数多了更懂上下文, 但更费 token。默认 6, 填 0 表示不带历史。</div>
+                </div>
+                <div class="form-status" id="generalStatus"></div>
+              </div>
+
+              <!-- 搭建 Agent 的预算。和上面那块分开: 上面是分析 Agent 的,
+                   这块是「流程引擎」里搭卡的 AI 的。以前这两个值是写死的常量,
+                   跑满了只能在界面上提示用户"再说一句继续"。 -->
+              <div class="page-header" style="margin-top:32px">
+                <h2>搭建流程卡</h2>
+                <button class="btn btn-primary" id="btnSaveBuilder">保存</button>
+              </div>
+              <p class="muted">AI 在「流程引擎」里搭卡时能用多少步。</p>
+              <div class="form-card">
+                <div class="form-row">
+                  <label>单轮最大步数</label>
+                  <input type="number" id="buildMaxSteps" step="1" min="10" max="120" />
+                  <div class="form-hint">一轮里最多做多少步 (看表、看数据、加节点、配 SQL 都算一步)。卡复杂就调大。默认 40。</div>
+                </div>
+                <div class="form-row">
+                  <label>自动续跑轮数</label>
+                  <input type="number" id="buildMaxRounds" step="1" min="1" max="5" />
+                  <div class="form-hint">一轮步数跑满、卡还没搭完时, 自动接着跑几轮 (不用你再说"继续")。调大更省事但更费 token。默认 3。</div>
+                </div>
+                <div class="form-status" id="builderStatus"></div>
+              </div>
+            </div>
+
+            <!-- ---- 关于 ---- -->
+            <!--
+              这一页只回答两件事: "我装的是什么" 和 "这个版本动了什么"。
+              内容全部来自 lib/changelog.js(出厂数据), 不读 config.json —— 更新日志
+              是版本自带的东西, 跟用户改了什么无关, 也不该被那 900ms 一次的全量
+              重写带上。
+            -->
+            <div class="settings-pane" data-pane="about">
+              <div class="page-header">
+                <h2>关于</h2>
+                <div class="row-gap">
+                  <button class="btn btn-ghost" id="btnAllChangelog">更新日志</button>
+                  <button class="btn btn-primary" id="btnCheckUpdate">检查更新</button>
+                </div>
+              </div>
+
+              <div class="about-hero">
+                <div class="about-brand">
+                  <span class="about-mark" aria-hidden="true">ASK</span>
+                  <div>
+                    <div class="about-name">Askaha<span class="about-version" id="aboutVersion">—</span></div>
+                    <div class="about-slogan" id="aboutSlogan"></div>
+                  </div>
+                </div>
+                <p class="about-summary" id="aboutSummary"></p>
+                <ul class="about-highlights" id="aboutHighlights"></ul>
+                <div class="about-meta" id="aboutMeta"></div>
+              </div>
+
+              <div class="form-card about-update">
+                <div class="form-row">
+                  <label>更新源</label>
+                  <input type="text" id="updateFeed" spellcheck="false" placeholder="http://10.0.0.5:8080/latest.json" />
+                  <div class="form-hint">
+                    指向一份 JSON: <code>version</code> / <code>publishedAt</code> / <code>url</code> (安装包或升级命令的地址)。
+                    留空表示不检查。内网地址直接填, 请求由主进程发出, 不受页面跨域限制。
+                  </div>
+                </div>
+                <div class="form-status" id="updateStatus"></div>
+              </div>
+
+              <div class="page-header about-log-header">
+                <h3>更新日志</h3>
+                <button class="btn btn-ghost btn-sm" id="btnAllChangelog2">查看全部</button>
+              </div>
+              <div class="changelog-list" id="aboutChangelog"></div>
             </div>
           </div>
-          <p class="muted">技能可以是单个 <code>.md</code> 文档 (带 frontmatter) 或一个文件夹 (含 <code>SKILL.md</code> / <code>skill.json</code> 与可选的 <code>.js</code> 脚本)。</p>
+      </section>
+
+      <!-- ============ 更新日志 (从「设置 · 关于」点进来) ============
+           左边按年月日时分排的版本菜单, 右边是这一个版本的详情。
+           它不是一个独立功能, 只是「关于」页里那份日志的放大版 —— 所以左侧一级
+           菜单上仍然停在「设置」。 -->
+      <section class="view" data-view="changelog">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">更新日志</div></div>
+          <div class="subnav-actions">
+            <button class="btn" id="btnChangelogBack">返回关于</button>
+          </div>
+        </div>
+        <div class="page changelog-page">
+          <div class="changelog-menu" id="changelogMenu"></div>
+          <div class="changelog-detail" id="changelogDetail"></div>
+        </div>
+      </section>
+
+      <!-- ============ 技能 (配置 · 第 3 个页签) ============ -->
+      <section class="view" data-view="skills">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">配置</div></div>
+          <div class="subnav-tabs" data-config-tabs></div>
+          <div class="subnav-actions">
+            <button class="btn" id="btnImportSkillFile">导入 .md</button>
+            <button class="btn btn-primary" id="btnImportSkill">导入文件夹</button>
+          </div>
+        </div>
+        <div class="page">
+          <p class="muted">技能可以是单个 <code>.md</code> 文档 (带 frontmatter) 或一个文件夹 (含 <code>SKILL.md</code> / <code>skill.json</code> 与可选的 <code>.js</code> 脚本)。系统提示里只放技能的名字和用途, 智能体需要时才会加载完整内容。</p>
           <div class="skill-list" id="skillList">
             <div class="empty-block">暂无技能</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 外部工具 MCP (配置 · 第 4 个页签) ============ -->
+      <section class="view" data-view="tools">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">配置</div></div>
+          <div class="subnav-tabs" data-config-tabs></div>
+          <div class="subnav-actions">
+            <button class="btn btn-primary" id="btnAddMcp">添加服务</button>
+          </div>
+        </div>
+        <div class="page">
+          <p class="muted">
+            把外部能力接进来, 智能体就能用: 内部风控、工单、知识库…… 一个服务就是一个可执行命令,
+            系统会在任务开始时拉起它, 把它提供的工具一并交给模型。工具名统一带
+            <code>mcp__服务__工具</code> 前缀, 跟内置动作区分开。
+          </p>
+          <div class="mcp-list" id="mcpList">
+            <div class="empty-block">暂无外部工具</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" data-view="intools">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">配置</div></div>
+          <div class="subnav-tabs" data-config-tabs></div>
+          <div class="subnav-actions">
+            <input type="search" class="intools-search" id="intoolsSearch"
+                   placeholder="搜索工具名 / 说明 / 参数" autocomplete="off" />
+          </div>
+        </div>
+        <div class="page">
+          <p class="muted">
+            系统内部三个智能体各自能调用的工具。这份清单<strong>不是</strong>页面上写死的 ——
+            它直接从各智能体的工具定义里读出来, 所以改了工具这里会跟着变。
+            每个工具的<strong>说明就是模型实际读到的提示词</strong>, 想知道模型为什么那样做, 看这里最准。
+          </p>
+          <div class="intools-summary" id="intoolsSummary"></div>
+          <div class="intools-groups" id="intoolsGroups">
+            <div class="empty-block">正在读取工具清单…</div>
           </div>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Add database modal -->
+  <!-- 添加数据库 -->
+  <!-- ============ 知识库相关弹窗 ============ -->
+
+  <!-- 新建知识库 -->
+  <div class="modal" id="modalNewKb" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header"><h3>新建知识库</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body">
+        <label class="field"><span class="field-label">名称</span><input id="kbNewName" class="field-input" placeholder="例如: 供应链知识库" /></label>
+        <label class="field"><span class="field-label">说明</span><input id="kbNewDesc" class="field-input" placeholder="选填" /></label>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="kbNewOk">创建</button></div>
+    </div>
+  </div>
+
+  <!-- 编辑知识库 (名称 / 说明) -->
+  <div class="modal" id="modalEditKb" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header"><h3>编辑知识库</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body">
+        <label class="field"><span class="field-label">名称</span><input id="kbEditName" class="field-input" /></label>
+        <label class="field"><span class="field-label">说明</span><input id="kbEditDesc" class="field-input" placeholder="选填" /></label>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="kbEditOk">保存</button></div>
+    </div>
+  </div>
+
+  <!-- 新建文件夹 -->
+  <div class="modal" id="modalNewFolder" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header"><h3>新建文件夹</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body">
+        <label class="field"><span class="field-label">名称</span><input id="kbFolderName" class="field-input" placeholder="例如: 采购 / 销售管理" /></label>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="kbFolderOk">创建</button></div>
+    </div>
+  </div>
+
+  <!-- 导入文档 (单个 / 批量 / 富文本 / 问答对) -->
+  <div class="modal" id="modalKbImport" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header"><h3>新建文档</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body">
+        <!-- 创建到哪里: 明确写出来, 还能改文件夹 (不用先导航进文件夹再点新建) -->
+        <div class="kb-dest">
+          <span class="kb-dest-label">创建到</span>
+          <span class="kb-dest-kb" id="kbDestKb">—</span>
+          <select class="field-input kb-dest-fol" id="kbDestFolder"></select>
+        </div>
+        <div class="subnav-tabs kb-import-modes" id="kbImportModes">
+          <button class="subnav-tab active" data-imp="file">文件</button>
+          <button class="subnav-tab" data-imp="richtext">富文本</button>
+          <button class="subnav-tab" data-imp="qa">问答对</button>
+        </div>
+
+        <!-- 文件: 上传组件 + 已选文件 (列在下面) -->
+        <div class="kb-import-pane" id="kbImpFilePane">
+          <button type="button" class="kb-drop" id="kbImpPick">
+            <span class="kb-drop-svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.2V4.2"/><path d="M7.6 8.6 12 4.2l4.4 4.4"/><path d="M4.2 16.6v2.4c0 .5.4.9.9.9h13.8c.5 0 .9-.4.9-.9v-2.4"/></svg></span>
+            <span class="kb-drop-title">点击选择文件</span>
+            <span class="kb-drop-sub">支持 md / txt / docx / pdf · 可多选 (pdf 请改用「富文本」粘贴)</span>
+          </button>
+          <div id="kbImpFiles" class="kb-file-list"></div>
+        </div>
+
+        <!-- 富文本 -->
+        <div class="kb-import-pane" id="kbImpRichPane" hidden>
+          <input id="kbImpRichName" class="field-input" placeholder="文档名 (选填)" />
+          <textarea id="kbImpRichText" class="field-input kb-import-textarea" placeholder="粘贴或编辑内容 (支持 HTML 或纯文本)"></textarea>
+        </div>
+
+        <!-- 问答对: 一问一答分开填, 可加多对 -->
+        <div class="kb-import-pane" id="kbImpQaPane" hidden>
+          <input id="kbImpQaName" class="field-input" placeholder="清单名 (选填)" />
+          <div class="kb-qa-add">
+            <input id="kbImpQaQ" class="field-input" placeholder="问题" />
+            <input id="kbImpQaA" class="field-input" placeholder="答案" />
+            <button class="btn" id="kbImpQaAdd" type="button">添加</button>
+          </div>
+          <div id="kbImpQaList" class="kb-file-list kb-qa-list"></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="kbImpOk">创建</button></div>
+    </div>
+  </div>
+
+  <!-- 文档详情 (导入参数 + 分块预览) -->
+  <div class="modal" id="modalDocDetail" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header"><h3 id="docDetailTitle">文档详情</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body" id="docDetailBody"></div>
+    </div>
+  </div>
+
+  <!-- 问答: 详情 (字段 + 执行流程图 + 回答 + 参考资料) -->
+  <div class="modal" id="modalQaDetail" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header"><h3 id="qaDetailTitle">问答详情</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body" id="qaDetailBody"></div>
+    </div>
+  </div>
+
+  <!-- 问答: AI 分析结果 -->
+  <div class="modal" id="modalQaAnalyze" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header"><h3>AI 分析</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body" id="qaAnalyzeBody"></div>
+    </div>
+  </div>
+
+  <!-- 问答: 点踩原因 -->
+  <div class="modal" id="modalQaFeedback" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header"><h3>这条回答哪里不对？</h3><div class="modal-header-actions"><button class="btn-icon" data-close>×</button></div></div>
+      <div class="modal-body">
+        <div class="qa-fb-tags" id="qaFbTags"></div>
+        <textarea id="qaFbText" class="field-input kb-import-textarea" placeholder="我们想知道你对此回答不满意的原因, 你认为更好的回答是什么？"></textarea>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="qaFbOk">提交</button></div>
+    </div>
+  </div>
+
   <div class="modal" id="modalDb" hidden>
     <div class="modal-backdrop" data-close></div>
     <div class="modal-card">
@@ -192,6 +852,302 @@
     </div>
   </div>
 
+  <!-- 切到自动模式的二次确认 -->
+  <div class="modal" id="modalAutoMode" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>切到自动模式?</h3>
+        <button class="btn-icon" data-close>×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-lead">自动模式下, AI 会自己决定这次要查哪些库、哪些表, 不再先问你。</p>
+        <div class="callout callout-warn">
+          <div class="callout-title">前提条件</div>
+          <div>AI 自动选库选表需要系统维护好对应数据库表的备注, 否则将会影响数据查询的准确性。</div>
+        </div>
+        <p class="modal-lead">表名和字段名通常看不出业务含义 (比如 <code>t_ord_hdr</code>、<code>f_st</code>)。AI 只能靠<b>表的备注</b>判断"销售额该查哪张表"。备注缺失或写得含糊时, 它可能选错表, 给出的数字看起来正常但是错的 —— 这种错比报错更危险。</p>
+        <div class="modal-hint">建议先去「数据空间」把常用表的备注补上, 或者先用手动模式跑几次, 确认 AI 选表的判断符合你的预期。</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>保持手动模式</button>
+        <button class="btn btn-primary" id="btnAutoModeOk">我已了解, 切换到自动模式</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用二次确认。
+       以前这些地方用的是原生 window.confirm —— 它丑、不能换按钮文案、不能标红
+       危险操作, 而且样式跟应用完全脱节。删库/删对话/删流程卡这类不可逆的动作
+       尤其需要一眼看出"这个按钮会删东西"。 -->
+  <div class="modal" id="modalConfirm" hidden>
+    <div class="modal-backdrop" data-cf-cancel></div>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h3 id="cfTitle">确认</h3>
+        <button class="btn-icon" data-cf-cancel aria-label="取消">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-lead" id="cfMessage"></p>
+        <div class="callout callout-danger" id="cfDetail" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="cfCancel" data-cf-cancel>取消</button>
+        <button class="btn btn-primary" id="cfOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增 / 编辑一条模型 -->
+  <div class="modal" id="modalModel" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalModelTitle">新增模型</h3>
+        <button class="btn-icon" data-close>×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>显示名称</label>
+          <input type="text" id="mmName" placeholder="比如: 主力模型 / 便宜快模型" />
+          <div class="form-hint">只给你自己看。对话页那个选择框里显示的就是它 —— 所以别只写 gpt-4o, 写"gpt-4o (准但贵)"更好认。</div>
+        </div>
+        <div class="form-row">
+          <label>Base URL</label>
+          <input type="text" id="mmBaseURL" placeholder="https://api.openai.com/v1" />
+          <div class="form-hint">OpenAI 兼容网关的地址, 末尾的 <code>/v1</code> 要带上。</div>
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="mmModel" placeholder="gpt-4o-mini" />
+          <div class="form-hint">发给网关的模型名, 要跟网关那边的写法完全一致。</div>
+        </div>
+        <div class="form-row">
+          <label>API Key</label>
+          <input type="password" id="mmApiKey" placeholder="sk-..." />
+          <div class="form-hint" id="mmKeyHint">出于安全考虑密钥不再回显; 留空表示不修改已保存的那把。</div>
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Temperature</label>
+            <input type="number" id="mmTemp" step="0.1" min="0" max="2" />
+            <div class="form-hint">越低越稳。查数类任务建议 0.1~0.3。</div>
+          </div>
+          <div>
+            <label>Max Tokens</label>
+            <input type="number" id="mmMaxTokens" step="1" min="100" />
+            <div class="form-hint">推理模型会把思考算进这份配额, 给小了正文会被截断。</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>上下文窗口上限 (tokens)</label>
+          <input type="number" id="mmCtxLimit" step="1000" min="1000" placeholder="128000" />
+          <div class="form-hint">对话页那个圆环拿它当分母。各家差别很大 (8k 到 1M), 请按你实际用的模型填 —— 填大了会让人以为还很空, 填小了会过早提醒你开新会话。不确定就留 128000。</div>
+        </div>
+        <div class="form-status" id="mmStatus"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-primary" id="btnSaveModel">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加外部工具 (MCP) -->
+  <div class="modal" id="modalMcp" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>添加外部工具服务</h3>
+        <button class="btn-icon" data-close>×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>显示名称</label>
+          <input type="text" id="mcpName" placeholder="内部风控" />
+        </div>
+        <div class="form-row">
+          <label>启动命令</label>
+          <input type="text" id="mcpCommand" placeholder="npx -y @modelcontextprotocol/server-filesystem D:\\data" />
+          <div class="form-hint">就是平时在终端里敲的那一整行, 带参数; 路径含空格请用双引号括起来。</div>
+        </div>
+        <div class="form-row">
+          <label>环境变量 (可选)</label>
+          <textarea id="mcpEnv" rows="3" placeholder="API_KEY=xxx&#10;BASE_URL=https://..."></textarea>
+          <div class="form-hint">每行一个 <code>KEY=VALUE</code>, 用于给这个服务传密钥。</div>
+        </div>
+        <div class="form-status" id="mcpFormStatus"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-primary" id="btnSaveMcp">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提示词全文预览 -->
+  <div class="modal" id="modalPrompt" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3>系统提示词全文 (实际发给模型的版本)</h3>
+        <button class="btn-icon" data-close>×</button>
+      </div>
+      <div class="modal-body">
+        <div class="prompt-preview-hint" id="promptPreviewHint"></div>
+        <pre class="prompt-preview" id="promptPreview"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 重命名对话 -->
+  <div class="modal" id="modalRename" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>重命名对话</h3>
+        <button class="btn-icon" data-close>×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>对话名称</label>
+          <input type="text" id="renameInput" placeholder="给这条对话起个名字" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-primary" id="btnRenameSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 流程卡配置: 详情 / 什么时候使用 / 启用 (顶部只留标题, 这些收进这里) -->
+  <div class="modal" id="modalEngCfg" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>流程卡配置</h3>
+        <button class="btn-icon" data-close>×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>详情 <span class="muted">（这张卡是干什么的）</span></label>
+          <input type="text" id="engCfgDesc" placeholder="写清楚才容易被用户的话命中" />
+        </div>
+        <div class="form-row">
+          <label>什么时候使用 <span class="muted">（用户可能怎么问，多个用 | 分隔）</span></label>
+          <input type="text" id="engCfgExamples" placeholder="例如：XX 单号报错了是什么原因 | XX 失败怎么办" />
+        </div>
+        <div class="form-row">
+          <label>启用</label>
+          <div class="eng-cfg-toggle-row">
+            <label class="engine-toggle"><input type="checkbox" id="engCfgEnabled" /> 启用这张卡</label>
+            <span class="muted">停用后路由器不会再命中它，配置都留着。</span>
+          </div>
+        </div>
+        <div class="eng-cfg-hint">改完直接生效，记得回画板点「保存」写进配置。</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" data-close>完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 流程卡包: 导入 / 导出共用一个弹窗。
+       两种模式长得像 (都是"挑几张卡 + 下面一排按钮"), 所以合成一个 —— 分成两个
+       弹窗会有两套几乎一样的勾选/全选/计数代码, 而且改一处忘一处。
+
+       导入模式比导出多两块: 库对应关系 (来源的库指到本机哪个库) 和同名卡策略。
+       两块都由 src/js/engines.js 现画, 这里只留容器。 -->
+  <div class="modal" id="modalCardPack" hidden>
+    <div class="modal-backdrop" data-cpk-close></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3 id="cpkTitle">流程卡包</h3>
+        <button class="btn-icon" data-cpk-close>×</button>
+      </div>
+      <div class="modal-body" id="cpkBody"></div>
+      <div class="modal-footer">
+        <span class="cpk-foot-note" id="cpkFootNote"></span>
+        <button class="btn btn-ghost" data-cpk-close>取消</button>
+        <button class="btn btn-primary" id="cpkOk">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 搭建: 配置 AI 可用的库和表 (圈出 AI 能看到的最大范围) -->
+  <div class="modal" id="modalAiScope" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3>配置 AI 可用的库和表</h3>
+        <div class="modal-header-actions">
+          <button class="btn btn-sm" id="btnAiScopeSync" title="重新读一遍「数据库」页的配置，把新加的库和表拉进来">同步</button>
+          <button class="btn-icon" data-close>×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="eng-ai-scope-hint">
+          这个范围决定 <b>AI 搭建时</b>能看哪些表：它会先在这里圈出真正用到的几张，再回头跟你确认，不会自己扩大。这里只列出你在「数据库」页维护过的表。<br />
+          你在取数节点里<b>手动</b>选表不受这个范围限制 —— 范围管的是 AI，不是这张卡能跑什么。<br />
+          刚在「数据库」页加了库或勾了表，这里没看到，点右上角「同步」。
+        </div>
+        <div class="eng-ai-scope-list" id="aiScopeList"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-primary" id="btnAiScopeSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 流程卡测试: 拿一组样例输入把当前这张卡真跑一遍 (不要求先保存) -->
+  <div class="modal" id="modalEngTest" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card modal-card-wide eng-test-card">
+      <div class="modal-header">
+        <h3>测试这张流程卡</h3>
+        <div class="modal-header-actions">
+          <button class="btn-icon" data-close>×</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="eng-test-inputs" id="engTestInputs"></div>
+        <div class="eng-test-actions">
+          <button class="btn btn-primary btn-sm" id="btnEngTestRun" title="按画板上这份草稿跑一遍，把每步的取数结果和最终结论显示出来。只读、不改卡、不花模型钱">开始测试</button>
+          <button class="btn btn-sm" id="btnEngTestProbe" title="只取前 200 行、秒级返回，先确认链路通不通、字段对不对。结果被截断，不能当最终验证">快速探针</button>
+          <button class="btn btn-sm btn-ghost" id="btnEngTestBatchMode" title="一列一个值：粘多行，一次把每一行都跑一遍">批量</button>
+          <button class="btn btn-sm btn-ghost" id="btnEngTestAuto" title="先跑一遍；跑不通就自己查原因、改卡、再跑，直到跑通。会改画板上的草稿，要花几分钟和模型钱">自动测试并修复</button>
+          <button class="btn btn-sm btn-ghost" id="btnEngTestCancel" hidden>停止</button>
+          <span class="eng-test-status" id="engTestStatus"></span>
+        </div>
+        <div class="eng-test-rounds" id="engTestRounds" hidden></div>
+        <div class="eng-test-result" id="engTestResult"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全屏预览 -->
+  <div class="preview-full" id="previewFull" hidden>
+    <div class="pf-bar">
+      <div class="pf-title-wrap">
+        <span class="pf-kind" id="pfKind"></span>
+        <span class="pf-title" id="pfTitle"></span>
+      </div>
+      <div class="head-actions">
+        <button class="btn" id="pfReveal">在文件夹中显示</button>
+        <button class="btn-icon" id="pfClose" title="关闭 (Esc)">×</button>
+      </div>
+    </div>
+    <div class="pf-body" id="pfBody"></div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast" hidden></div>
 
@@ -211,9 +1167,23 @@
     </div>
   </div>
 
-  <!-- 诊断指示器: 显示 JS 加载进度, 出问题时方便定位 -->
-  <div id="diag" style="position:fixed;bottom:6px;right:6px;background:#fde68a;color:#1f2328;padding:3px 8px;font:11px ui-monospace,Consolas,monospace;border-radius:6px;z-index:9999;">diag: pending</div>
+  <!-- 诊断指示器: 显示 JS 加载进度, 出问题时方便定位。
+       pointer-events:none 是必须的: 它钉在窗口右下角 (z-index 9999), 而流程引擎
+       视图的 AI 面板把「发送」放在同一个角落 —— 不吃掉点击, 就会有人点发送没反应,
+       又看不出是谁挡的。它只是块文字, 没有任何点击行为, 所以不吃点击零代价。 -->
+  <div id="diag" style="position:fixed;bottom:6px;right:6px;background:#fde68a;color:#1f2328;padding:3px 8px;font:11px ui-monospace,Consolas,monospace;border-radius:6px;z-index:9999;pointer-events:none;">diag: pending</div>
 
-  <script src="js/app.js?v=6"></script>
+  <!-- markdown 渲染器。放在 lib/ 下是为了让 Node 测试和浏览器共用同一份 ——
+       它是纯函数, 不碰 Electron, 挂到 window.SoloMarkdown 上。 -->
+  <script src="../lib/markdown.js?v=1"></script>
+  <!-- 关于页与更新日志的数据源。和 markdown.js 一样是"两处共用一份"的纯数据模块:
+       Node 侧 require 得到同一份对象, 以后生成 Release Notes 不必再抄一遍。 -->
+  <script src="../lib/changelog.js?v=1"></script>
+  <!-- 流程卡包 (导入导出)。同样是"两处共用一份": 主进程用它读写文件, 页面用它的
+       指纹/库对应/导入计划来画预览 —— 两边各写一套判断迟早会对不上。 -->
+  <script src="../lib/cardpack.js?v=1"></script>
+  <script src="js/engines.js?v=24"></script>
+  <script src="js/app.js?v=20"></script>
+  <script src="js/knowledge.js?v=15"></script>
 </body>
 </html>
