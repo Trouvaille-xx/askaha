@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Askaha</title>
-  <link rel="stylesheet" href="styles/main.css?v=26" />
+  <link rel="stylesheet" href="styles/main.css?v=30" />
 </head>
 <body>
   <div class="app">
@@ -44,6 +44,13 @@
           <button class="nav-item" data-view="knowledge" title="知识库">
             <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.1 3.4h3.8a1.7 1.7 0 0 1 1.1.5 1.7 1.7 0 0 1 1.1-.5h3.8v8.6H8.6a1.4 1.4 0 0 0-1.4 1.1 1.4 1.4 0 0 0-1.4-1.1H3.1z"/><path d="M8 3.9v9.2"/></svg>
             <span class="nav-label">知识库</span>
+          </button>
+        </div>
+
+        <div class="sidenav-group">
+          <button class="nav-item" data-view="evalplatform" title="Eval 平台">
+            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 13.4V8.6M8 13.4V4.2M13.4 13.4V6.8"/><path d="M2.6 3.2l2.6 2 2.6-2.4 2.6 1.6"/></svg>
+            <span class="nav-label">Eval 平台</span>
           </button>
         </div>
       </nav>
@@ -362,7 +369,7 @@
                   <div class="composer-grip composer-grip-sm" id="engAiGrip" role="separator" aria-label="拖动调整输入框高度" title="拖动调整输入框高度">
                     <span class="composer-grip-bar"></span>
                   </div>
-                  <textarea id="engAiInput" rows="3" placeholder="用大白话说清你的判断逻辑，例如：查这批采购订单明细的入库状态，如果明细已入库但待对账入库单没有数据，就报存在问题，其他报正常"></textarea>
+                  <textarea id="engAiInput" rows="3" placeholder=""></textarea>
                   <div class="eng-ai-compose-bar">
                     <button class="btn btn-sm btn-ghost" id="btnAiReset" title="开一条新对话">新建对话</button>
                     <button class="btn btn-sm btn-danger eng-ai-stop" id="btnAiStop" title="停止正在跑的自测">停止</button>
@@ -660,6 +667,134 @@
           </div>
         </div>
       </section>
+
+      <!-- ============ Eval 平台 (运行记录 / 评测 / 规划器 三个页签) ============ -->
+      <section class="view" data-view="evalplatform">
+        <div class="subnav">
+          <div class="subnav-head"><div class="subnav-title">Eval 平台</div></div>
+          <div class="subnav-tabs" id="evalPlatformTabs">
+            <button class="subnav-tab active" data-pane="runs">运行记录</button>
+            <button class="subnav-tab" data-pane="eval">评测</button>
+            <button class="subnav-tab" data-pane="planner">规划器</button>
+            <button class="subnav-tab" data-pane="tools">工具</button>
+          </div>
+        </div>
+        <div class="page">
+          <!-- 运行记录 -->
+          <div class="eval-pane active" data-pane="runs">
+            <div class="eval-pane-actions">
+              <select class="eval-select" id="runFilterStatus">
+                <option value="">全部状态</option>
+                <option value="ok">成功</option>
+                <option value="error">错误</option>
+                <option value="cancelled">已取消</option>
+                <option value="handoff">已接管</option>
+              </select>
+              <button class="btn" id="btnRunRefresh">刷新</button>
+            </div>
+            <div class="eval-split">
+              <div class="eval-list" id="runList"><div class="empty-block">加载中…</div></div>
+              <div class="eval-detail" id="runDetail"><div class="empty-block">选择左侧运行查看详情</div></div>
+            </div>
+          </div>
+
+          <!-- 评测 -->
+          <div class="eval-pane" data-pane="eval">
+            <div class="eval-pane-actions">
+              <div class="subnav-tabs" id="evalModeTabs">
+                <button class="subnav-tab active" data-mode="single">单条测试</button>
+                <button class="subnav-tab" data-mode="batch">批量测试</button>
+              </div>
+              <span class="muted" id="evalScorerVer"></span>
+              <button class="btn btn-ghost eval-cases-btn" id="btnEvalCases" title="用例管理">▤ 用例管理</button>
+            </div>
+
+            <!-- 单条测试 -->
+            <div class="eval-mode active" data-mode="single">
+              <div class="eval-pane-actions">
+                <select class="eval-select" id="evalSingleCase" style="min-width:340px"></select>
+                <button class="btn btn-primary" id="btnEvalRunOne">运行这条</button>
+              </div>
+              <div class="eval-detail" id="evalSingleResult"><div class="empty-block">选一条用例并运行，查看真实回复、评分与 Trace</div></div>
+            </div>
+
+            <!-- 批量测试 -->
+            <div class="eval-mode" data-mode="batch">
+              <div class="eval-pane-actions">
+                <button class="btn btn-primary" id="btnEvalNewBatch">+ 新建批次</button>
+                <button class="btn" id="btnEvalBatchRefresh">刷新</button>
+              </div>
+              <div class="eval-batches" id="evalBatches"><div class="empty-block">暂无批次</div></div>
+              <h3 class="eval-h3">版本对比</h3>
+              <div class="eval-compare-form">
+                <select class="eval-select" id="evalCompareA"></select>
+                <select class="eval-select" id="evalCompareB"></select>
+                <button class="btn" id="btnEvalCompare">对比</button>
+              </div>
+              <div class="eval-detail" id="evalCompare"><div class="empty-block">选择两个批次进行对比</div></div>
+            </div>
+          </div>
+
+          <!-- 评测用例 (整页) -->
+          <div class="eval-pane" data-pane="cases">
+            <div class="eval-cases-head">
+              <button class="btn btn-ghost" id="btnEvalCasesBack">← 返回评测</button>
+              <div class="eval-cases-title" id="evalCasesTitle">评测用例</div>
+            </div>
+            <div class="eval-cases-toolbar">
+              <button class="btn btn-primary" id="btnEvalNewCase">+ 新增用例</button>
+              <button class="btn" id="btnEvalFromRun">从 Run 加入</button>
+              <input class="eval-select eval-search" id="evalCaseSearch" placeholder="搜索名称或问题" />
+              <select class="eval-select" id="evalFilterStatus">
+                <option value="">全部状态</option>
+                <option value="on">仅启用</option>
+                <option value="off">仅停用</option>
+              </select>
+              <select class="eval-select" id="evalFilterDim"><option value="">全部维度</option></select>
+            </div>
+            <div id="evalCaseTable"><div class="empty-block">加载中…</div></div>
+          </div>
+
+          <!-- 批次运行历史 (整页: 左目录 右报告) -->
+          <div class="eval-pane" data-pane="batchruns">
+            <div class="eval-cases-head">
+              <button class="btn btn-ghost" id="btnBatchRunsBack">← 返回批量测试</button>
+              <div class="eval-cases-title" id="batchRunsTitle">运行历史</div>
+              <button class="btn" id="btnBatchRunsRefresh">刷新</button>
+            </div>
+            <div class="eval-split">
+              <div class="eval-list" id="evalRunDir"><div class="empty-block">加载中…</div></div>
+              <div class="eval-detail" id="evalBatchReport"><div class="empty-block">选择左侧一次运行查看报告</div></div>
+            </div>
+          </div>
+
+          <!-- 规划器 -->
+          <div class="eval-pane" data-pane="planner">
+            <div class="eval-pane-actions">
+              <button class="btn btn-primary" id="btnPlannerPreview">预览计划</button>
+              <button class="btn" id="btnPlannerSaveCfg">保存配置</button>
+            </div>
+            <h3 class="eval-h3">允许的能力 / Skill</h3>
+            <div class="eval-detail" id="plannerConfig"><div class="empty-block">加载中…</div></div>
+            <div class="form-row"><label>测试问题</label><textarea id="plannerQuestion" class="prompt-body" rows="3" placeholder="输入一个分析问题，预览「意图路由 + 规划 + 校验」结果（只预览，不执行）"></textarea></div>
+            <h3 class="eval-h3">Planner Prompt（当前硬编码在 lib/planner.js）</h3>
+            <pre id="plannerPromptView" class="plan-block">加载中…</pre>
+            <div class="eval-detail" id="plannerResult"><div class="empty-block">输入问题后点「预览计划」</div></div>
+          </div>
+
+          <!-- 工具 -->
+          <div class="eval-pane" data-pane="tools">
+            <div class="eval-pane-actions">
+              <input type="search" class="eval-select tool-search" id="toolSearch" placeholder="搜索名称或 id" autocomplete="off" />
+            </div>
+            <div class="tool-stats" id="toolStats"></div>
+            <div class="eval-split">
+              <div class="eval-list" id="toolList"><div class="empty-block">加载中…</div></div>
+              <div class="eval-detail" id="toolDetail"><div class="empty-block">选择左侧工具</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -898,6 +1033,85 @@
     </div>
   </div>
 
+  <!-- 评测: 新建批次 -->
+  <div class="modal" id="modalEvalBatch" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" style="max-width:720px">
+      <div class="modal-header"><h3>新建批次</h3><button class="btn-icon" data-close>×</button></div>
+      <div class="modal-body">
+        <div class="form-row two-col">
+          <div><label>批次名称</label><input id="ebName" placeholder="留空自动命名" /></div>
+          <div><label>版本标签（可选）</label><input id="ebLabel" placeholder="如 baseline-v1 / risk-fix-v2" /></div>
+        </div>
+        <div class="form-row"><label>选择用例 <span class="muted" id="ebCount"></span></label></div>
+        <div id="ebCaseList" class="eb-case-list"><div class="empty-block">加载中…</div></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-primary" id="btnEvalBatchCreate">创建批次</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 评测: 新增 / 编辑用例 -->
+  <div class="modal" id="modalEvalCase" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" style="max-width:760px">
+      <div class="modal-header"><h3 id="evalCaseTitle">新增用例</h3><button class="btn-icon" data-close>×</button></div>
+      <div class="modal-body">
+        <div class="form-row"><label>名称</label><input id="ecName" placeholder="如：价格与优惠券核验" /></div>
+        <div class="form-row"><label>问题</label><textarea id="ecQuestion" class="prompt-body" rows="2"></textarea></div>
+        <div class="form-row two-col">
+          <div><label>场景 / 分类</label><input id="ecScenario" placeholder="价格核验 / 售后 / 闲聊 …" /></div>
+          <div><label>评测维度</label><select class="eval-select" id="ecDimension"><option>correctness</option><option>safety</option><option>capability</option><option>completeness</option><option>tone</option></select></div>
+        </div>
+        <div class="form-row two-col">
+          <div><label>难度</label><select class="eval-select" id="ecDifficulty"><option>easy</option><option>medium</option><option>hard</option></select></div>
+          <div><label>风险等级</label><select class="eval-select" id="ecRisk"><option>none</option><option>low</option><option>medium</option><option>high</option></select></div>
+        </div>
+        <div class="form-row"><label>期望行为</label><textarea id="ecBehavior" class="prompt-body" rows="2"></textarea></div>
+        <div class="form-row two-col">
+          <div><label>期望关键词（每行一个）</label><textarea id="ecKeywords" class="prompt-body" rows="2"></textarea></div>
+          <div><label>禁词（每行一个）</label><textarea id="ecForbidden" class="prompt-body" rows="2"></textarea></div>
+        </div>
+        <div class="form-row two-col">
+          <div><label>期望价格（可选）</label><input id="ecPrice" type="number" /></div>
+          <div><label>必需能力（每行一个，如 sql）</label><textarea id="ecReqCaps" class="prompt-body" rows="2"></textarea></div>
+        </div>
+        <div class="form-row"><label>标签（逗号分隔）</label><input id="ecTags" /></div>
+        <div class="eval-actions">
+          <label class="eval-check"><input type="checkbox" id="ecRiskPass" checked /> 期望最终回复安全</label>
+          <label class="eval-check"><input type="checkbox" id="ecEnabled" checked /> 启用</label>
+        </div>
+        <div class="form-status" id="ecStatus"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-primary" id="btnEvalCaseSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 评测: 从 Run 加入 -->
+  <div class="modal" id="modalEvalFromRun" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" style="max-width:720px">
+      <div class="modal-header"><h3>从 Run 加入评测集</h3><button class="btn-icon" data-close>×</button></div>
+      <div class="modal-body">
+        <div class="eval-cases-toolbar">
+          <input class="eval-select eval-search" id="evalRunSearch" placeholder="搜索问题" />
+          <button class="btn" id="btnEvalRunMore">加载更多</button>
+          <span class="muted" id="evalRunPickCount"></span>
+        </div>
+        <div id="evalRunPickList" class="eval-run-pick"><div class="empty-block">加载中…</div></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-primary" id="btnEvalFromRunCreate">用选中新建</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 新增 / 编辑一条模型 -->
   <div class="modal" id="modalModel" hidden>
     <div class="modal-backdrop" data-close></div>
@@ -909,44 +1123,38 @@
       <div class="modal-body">
         <div class="form-row">
           <label>显示名称</label>
-          <input type="text" id="mmName" placeholder="比如: 主力模型 / 便宜快模型" />
-          <div class="form-hint">只给你自己看。对话页那个选择框里显示的就是它 —— 所以别只写 gpt-4o, 写"gpt-4o (准但贵)"更好认。</div>
+          <input type="text" id="mmName" placeholder="主力模型 / 便宜快模型" />
         </div>
         <div class="form-row">
           <label>Base URL</label>
           <input type="text" id="mmBaseURL" placeholder="https://api.openai.com/v1" />
-          <div class="form-hint">OpenAI 兼容网关的地址, 末尾的 <code>/v1</code> 要带上。</div>
         </div>
         <div class="form-row">
           <label>Model</label>
           <input type="text" id="mmModel" placeholder="gpt-4o-mini" />
-          <div class="form-hint">发给网关的模型名, 要跟网关那边的写法完全一致。</div>
         </div>
         <div class="form-row">
           <label>API Key</label>
           <input type="password" id="mmApiKey" placeholder="sk-..." />
-          <div class="form-hint" id="mmKeyHint">出于安全考虑密钥不再回显; 留空表示不修改已保存的那把。</div>
         </div>
         <div class="form-row two-col">
           <div>
             <label>Temperature</label>
             <input type="number" id="mmTemp" step="0.1" min="0" max="2" />
-            <div class="form-hint">越低越稳。查数类任务建议 0.1~0.3。</div>
           </div>
           <div>
             <label>Max Tokens</label>
             <input type="number" id="mmMaxTokens" step="1" min="100" />
-            <div class="form-hint">推理模型会把思考算进这份配额, 给小了正文会被截断。</div>
           </div>
         </div>
         <div class="form-row">
           <label>上下文窗口上限 (tokens)</label>
           <input type="number" id="mmCtxLimit" step="1000" min="1000" placeholder="128000" />
-          <div class="form-hint">对话页那个圆环拿它当分母。各家差别很大 (8k 到 1M), 请按你实际用的模型填 —— 填大了会让人以为还很空, 填小了会过早提醒你开新会话。不确定就留 128000。</div>
         </div>
         <div class="form-status" id="mmStatus"></div>
       </div>
       <div class="modal-footer">
+        <button class="btn btn-ghost" id="btnTestModel">测试模型</button>
         <button class="btn btn-ghost" data-close>取消</button>
         <button class="btn btn-primary" id="btnSaveModel">保存</button>
       </div>
@@ -1183,7 +1391,12 @@
        指纹/库对应/导入计划来画预览 —— 两边各写一套判断迟早会对不上。 -->
   <script src="../lib/cardpack.js?v=1"></script>
   <script src="js/engines.js?v=24"></script>
-  <script src="js/app.js?v=20"></script>
+  <script src="js/app.js?v=21"></script>
+  <script src="js/select.js?v=1"></script>
   <script src="js/knowledge.js?v=15"></script>
+  <script src="js/runs.js?v=1"></script>
+  <script src="js/eval.js?v=8"></script>
+  <script src="js/planner.js?v=1"></script>
+  <script src="js/tools.js?v=1"></script>
 </body>
 </html>

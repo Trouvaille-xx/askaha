@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('bridge', {
     saveModel: (m) => ipcRenderer.invoke('llm:save', m),
     deleteModel: (id) => ipcRenderer.invoke('llm:delete', id),
     setActiveModel: (id) => ipcRenderer.invoke('llm:setActive', id),
+    testModel: (payload) => ipcRenderer.invoke('llm:test', payload),
     addDatabase: (db) => ipcRenderer.invoke('config:addDatabase', db),
     removeDatabase: (id) => ipcRenderer.invoke('config:removeDatabase', id),
     setDatabaseTables: (payload) => ipcRenderer.invoke('config:setDatabaseTables', payload)
@@ -139,6 +140,40 @@ contextBridge.exposeInMainWorld('bridge', {
     // 占位「新对话」在第一轮任务发出后补标题 + 记下本次分析范围
     title: (payload) => ipcRenderer.invoke('conv:title', payload),
     remove: (id) => ipcRenderer.invoke('conv:delete', id)
+  },
+  // 运行记录 / 评测 / 规划器
+  run: {
+    list: (filter) => ipcRenderer.invoke('run:list', filter),
+    get: (id) => ipcRenderer.invoke('run:get', id),
+    handoff: (id) => ipcRenderer.invoke('run:handoff', id),
+    annotate: (payload) => ipcRenderer.invoke('run:annotate', payload),
+    remove: (id) => ipcRenderer.invoke('run:delete', id)
+  },
+  eval: {
+    list: () => ipcRenderer.invoke('eval:list'),
+    caseCreate: (input) => ipcRenderer.invoke('eval:caseCreate', input),
+    caseUpdate: (input) => ipcRenderer.invoke('eval:caseUpdate', input),
+    caseDelete: (id) => ipcRenderer.invoke('eval:caseDelete', id),
+    caseFromRun: (payload) => ipcRenderer.invoke('eval:caseFromRun', payload),
+    runOne: (caseId) => ipcRenderer.invoke('eval:runOne', caseId),
+    batchCreate: (payload) => ipcRenderer.invoke('eval:batchCreate', payload),
+    batchRun: (payload) => ipcRenderer.invoke('eval:batchRun', payload),
+    batchRuns: (payload) => ipcRenderer.invoke('eval:batchRuns', payload),
+    batchRunGet: (id) => ipcRenderer.invoke('eval:batchRunGet', id),
+    batchCancel: (id) => ipcRenderer.invoke('eval:batchCancel', id),
+    batchGet: (id) => ipcRenderer.invoke('eval:batchGet', id),
+    compare: (payload) => ipcRenderer.invoke('eval:compare', payload),
+    onBatchEvent: (cb) => {
+      const h = (_e, ev) => cb(ev);
+      ipcRenderer.on('eval:batchEvent', h);
+      return () => ipcRenderer.removeListener('eval:batchEvent', h);
+    }
+  },
+  planner: {
+    preview: (payload) => ipcRenderer.invoke('planner:preview', payload),
+    prompt: () => ipcRenderer.invoke('planner:prompt'),
+    configGet: () => ipcRenderer.invoke('planner:config'),
+    configSave: (payload) => ipcRenderer.invoke('planner:config:save', payload)
   },
   space: {
     list: () => ipcRenderer.invoke('space:list'),

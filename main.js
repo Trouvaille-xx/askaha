@@ -19,6 +19,15 @@ const { isSafeId } = require('./lib/safe-id');
 const { publicConfig: toPublicConfig } = require('./lib/public-config');
 const { CONV_MAX_TURNS, turnCount } = require('./lib/conversation.js');
 const AiChatStore = require('./lib/ai-chat-store');
+const RunsStore = require('./lib/runs-store');
+const EvalStore = require('./lib/eval-store');
+const Scorer = require('./lib/eval/scorer');
+const Compare = require('./lib/eval/compare');
+const { deriveCapabilities } = require('./lib/eval/capabilities');
+const { normalizeCase } = require('./lib/eval/case');
+const Planner = require('./lib/planner');
+const PlanValidator = require('./lib/plan-validator');
+const crypto = require('crypto');
 const Report = require('./lib/report');
 const { MCPManager } = require('./lib/mcp');
 const Prompt = require('./lib/prompt');
@@ -41,6 +50,9 @@ let configPath = null;
 let configLoaded = false;
 let store = null;
 let aiChatStore = null;
+// 运行记录与评测: RunRecord 归一化落盘 + Eval 用例/批次
+let runsStore = null;
+let evalStore = null;
 // 知识库: store 管"知识库/文件夹/文档/分块/向量", qa 管问答飞轮, knowledge 是给
 // Agent 用的门面 (检索 / 导入)。三者都在 whenReady 里初始化。
 let knowledgeStore = null;
@@ -76,6 +88,12 @@ let config = {
   // 形状见 lib/prompt.js
   prompt: {
     modules: {}
+  },
+  // 规划器配置: 允许的能力 / 允许的 Skill / 必选能力 (Eval 平台 · 规划器可勾选)
+  planner: {
+    allowedCaps: ['sql', 'request_scope', 'describe_table', 'search_knowledge', 'load_skill', 'list_workflows', 'run_workflow', 'look_at_data', 'check_index', 'read_result'],
+    allowedSkills: null,
+    mandatory: []
   },
   // 行为参数。走设置页的「通用」。
   general: {
@@ -338,6 +356,9 @@ app.whenReady().then(() => {
   loadConfig();
   store = new Store({ rootDir: app.getPath('userData') });
   aiChatStore = new AiChatStore({ rootDir: app.getPath('userData') });
+  runsStore = new RunsStore({ rootDir: app.getPath('userData') });
+  evalStore = new EvalStore({ rootDir: app.getPath('userData') });
+  try { evalStore.seedIfEmpty(); } catch (e) { console.error('Eval seed failed:', e); }
   knowledgeStore = new KnowledgeStore({ rootDir: path.join(app.getPath('userData'), 'knowledge') });
   qaStore = new QaStore({ rootDir: path.join(app.getPath('userData'), 'knowledge', 'qa') });
   knowledge = new KnowledgeService({
@@ -458,6 +479,36 @@ ipcMain.handle('llm:setActive', (_e, id) => {
   config.llm = { models, activeId: next };
   saveConfig();
   return publicConfig().llm;
+});
+
+/**
+ * 测试模型连通性: 用当前表单填的地址/模型/Key 发一次极小的请求。
+ * 编辑已有模型、Key 留空时, 用该 id 已保存的密钥 (界面不会回显明文)。
+ */
+ipcMain.handle('llm:test', async (_e, input) => {
+  const p = (input && typeof input === 'object') ? input : {};
+  if (!p.model) return { ok: false, error: '请先填写模型名' };
+  let apiKey = typeof p.apiKey === 'string' ? p.apiKey.trim() : '';
+  if (!apiKey && p.id) {
+    const { models } = Models.normalizeLLM(config.llm);
+    const saved = models.find((m) => m.id === p.id);
+    if (saved) apiKey = saved.apiKey || '';
+  }
+  if (!apiKey) return { ok: false, error: '请填写 API Key' };
+  const t0 = Date.now();
+  try {
+    const llm = new LLMClient({
+      baseURL: p.baseURL || 'https://api.openai.com/v1',
+      apiKey,
+      model: p.model,
+      temperature: typeof p.temperature === 'number' ? p.temperature : 0.2,
+      maxTokens: 16
+    });
+    const text = await llm.chat([{ role: 'user', content: 'ping' }]);
+    return { ok: true, model: p.model, elapsedMs: Date.now() - t0, reply: String(text || '').slice(0, 80) };
+  } catch (e) {
+    return { ok: false, error: e.message, elapsedMs: Date.now() - t0 };
+  }
 });
 
 ipcMain.handle('config:addDatabase', (_e, db) => {
@@ -1500,6 +1551,70 @@ ipcMain.handle('agent:cancel', () => {
   return { ok: true };
 });
 
+/**
+ * 构造一次 agent 运行所需的整套上下文 (库路由 / 模型 / 技能 / MCP / Agent)。
+ * 对话 IPC 与 Eval 批量都走它 —— 保证两条路用的是**同一条真实执行链**。
+ */
+async function buildAgentContext({ dbIds } = {}) {
+  const router = new DbRouter({
+    databases: config.databases || [],
+    openDb: (conf) => new Database(conf),
+    dbIds
+  });
+  const llm = currentLLM();
+  const skills = new Skills({
+    skillsDir: path.join(app.getPath('userData'), 'skills'),
+    enabled: config.skills?.enabled || []
+  });
+  await skills.load();
+  const mcp = await getMCP();
+  const mcpInfo = mcpConnectInfo;
+  const agent = new Agent({
+    llm,
+    database: router,
+    skills,
+    mcp,
+    prompt: config.prompt || null,
+    general: config.general || null,
+    engines: config.engines || [],
+    databases: config.databases || [],
+    openDb: (conf) => new Database(conf),
+    knowledge
+  });
+  const close = async () => {
+    try { await router.close(); } catch (e) {}
+    try { mcp.closeAll(); } catch (e) {}
+  };
+  return { router, llm, skills, mcp, mcpInfo, agent, close };
+}
+
+/** 把一次运行的结果归一化成 RunRecord (落盘 + 供 Eval 评分读取)。 */
+function buildRunRecord({ question, source, conversationId, result, error, cancelled, provider, model }) {
+  const caps = result ? deriveCapabilities(result) : [];
+  return {
+    question,
+    source: source || 'chat',
+    conversationId: conversationId || null,
+    status: error ? (cancelled ? 'cancelled' : 'error') : 'ok',
+    finalReply: result ? (result.summary || result.title || '') : '',
+    plan: result ? (result.plan || null) : null,
+    steps: result ? (result.steps || []) : [],
+    trace: result ? (result.trace || []) : [],
+    traceSteps: result ? (result.traceSteps || []) : [],
+    riskResult: result && result.plan && result.plan.handoff && result.plan.handoff.needed
+      ? { level: 'high', handoff: true, reason: result.plan.handoff.reason || '' }
+      : { level: 'none' },
+    durationMs: result ? (result.elapsedMs || 0) : 0,
+    error: error || null,
+    provider: provider || '',
+    model: model || '',
+    skillVersions: (config.skills && config.skills.enabled) || [],
+    toolVersions: [],
+    capabilities: caps,
+    usage: result ? (result.usage || null) : null
+  };
+}
+
 ipcMain.handle('agent:run', async (_e, payload) => {
   const { task, conversationId, history, state: priorState, pickEngineId, tableMode, dbIds, kbIds } = payload;
 
@@ -1521,25 +1636,13 @@ ipcMain.handle('agent:run', async (_e, payload) => {
   //
   // dbIds 是对话抬头里选的那几个库 (空 = 不限制)。它只往下传给路由器,
   // **不碰 config.databases**, 所以流程卡拿到的仍然是全量配置, 不受这里影响。
-  const router = new DbRouter({
-    databases: config.databases || [],
-    openDb: (conf) => new Database(conf),
-    dbIds
-  });
+  const { agent, close, mcpInfo } = await buildAgentContext({ dbIds });
 
-  const llm = currentLLM();
   // 有了 llm 才能掐在飞的模型请求。取消只在"步与步之间"生效 —— 卡在一条慢 SQL 上时
   // 要等它回来才停 (驱动层没有 cancel)。
-  cancel.abort = () => { try { llm.abort('用户停止了任务'); } catch (e) {} };
-  const skills = new Skills({
-    skillsDir: path.join(app.getPath('userData'), 'skills'),
-    enabled: config.skills?.enabled || []
-  });
-  await skills.load();
+  cancel.abort = () => { try { agent.llm.abort('用户停止了任务'); } catch (e) {} };
 
   // 外部工具 (MCP): 起得来就并进工具表, 起不来就记一笔继续跑 —— 工具是加分项
-  const mcp = await getMCP();
-  const mcpInfo = mcpConnectInfo;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('agent:event', {
       conversationId,
@@ -1548,21 +1651,6 @@ ipcMain.handle('agent:run', async (_e, payload) => {
       errors: mcpInfo.errors
     });
   }
-
-  const agent = new Agent({
-    llm,
-    // 通用问句走路由器: 同一个对象既能报"有哪些表", 也能按表名把 SQL 发到正确的库
-    database: router,
-    skills,
-    mcp,
-    prompt: config.prompt || null,
-    general: config.general || null,
-    engines: config.engines || [],
-    databases: config.databases || [],
-    openDb: (conf) => new Database(conf),
-    // 知识库服务: 有它, search_knowledge 工具才暴露给模型
-    knowledge
-  });
 
   const askCheckpoint = (cp) => {
     const id = 'cp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -1587,6 +1675,8 @@ ipcMain.handle('agent:run', async (_e, payload) => {
       { history: history || [], state: priorState || null, pickEngineId: pickEngineId || null,
         // 自动模式: AI 自己选库选表, 不再弹窗问用户。见 lib/agent.js 里 autoTables 的说明。
         autoTables: tableMode === 'auto',
+        // 显式规划 (分析前先出计划)。设置里可关。
+        withPlan: !(config.general && config.general.planner && config.general.planner.enabled === false),
         // 对话页选中的知识库 (可多选; 空 = 用配置里的默认库)。
         kbIds: Array.isArray(kbIds) ? kbIds.filter(Boolean) : [],
         // 人工终止令牌 —— Agent 把它传给工具循环 (每轮检查) 和 _classifyIntent 前后的卡点
@@ -1643,16 +1733,42 @@ ipcMain.handle('agent:run', async (_e, payload) => {
       console.error('Failed to record QA flywheel entry:', e);
     }
 
-    return { ok: true, result: Object.assign({}, result, { qaId }), artifacts };
+    // 运行记录 (RunRecord): 归一化落盘, 供"运行记录"页与 Eval 评分器读取
+    let runId = null;
+    try {
+      if (runsStore) {
+        const am = Models.activeModel(config.llm) || {};
+        const rec = buildRunRecord({
+          question: task, source: 'chat', conversationId, result,
+          provider: 'openai-compatible', model: am.model || ''
+        });
+        const rr = runsStore.create(rec);
+        if (rr.ok) runId = rr.run.id;
+      }
+    } catch (e) {
+      console.error('Failed to record run:', e);
+    }
+
+    return { ok: true, result: Object.assign({}, result, { qaId, runId }), artifacts };
   } catch (e) {
+    try {
+      if (runsStore) {
+        const am = Models.activeModel(config.llm) || {};
+        runsStore.create(buildRunRecord({
+          question: task, source: 'chat', conversationId, result: null,
+          error: cancel.v ? '已停止' : e.message, cancelled: !!cancel.v,
+          provider: 'openai-compatible', model: am.model || ''
+        }));
+      }
+    } catch (e2) {
+      console.error('Failed to record failed run:', e2);
+    }
     // 用户点了「停止」—— 不是故障, 单独标出来让界面显示"已停止"
     if (cancel.v) return { ok: false, cancelled: true, error: '已停止' };
     return { ok: false, error: e.message };
   } finally {
     if (agentRunCancel === cancel) agentRunCancel = null;
-    // 路由器可能开了好几个连接 (跨库任务), 统一收
-    await router.close();
-    mcp.closeAll();
+    await close();
   }
 });
 
@@ -2384,6 +2500,296 @@ ipcMain.handle('skills:toggle', async (_e, name, enabled) => {
   config.skills = { enabled: Array.from(enabledList) };
   saveConfig();
   return config.skills;
+});
+
+// ========== 运行记录 / 评测 / 规划器 ==========
+
+function sha1short(s) {
+  return crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 8);
+}
+
+/** eval 无界面自动确认: 用确定性策略把 checkpoint 自动应答。 */
+function autoCheckpoint(cp) {
+  if (!cp || !cp.type) return {};
+  if (cp.type === 'tables') {
+    const sug = Array.isArray(cp.suggested) ? cp.suggested.map((s) => s.name) : [];
+    return { tables: sug.length ? sug : (cp.allTables || []).slice(0, 5) };
+  }
+  if (cp.type === 'fields') return { fields: cp.fieldsSelected || {} };
+  if (cp.type === 'sql') return { sql: cp.sql, confirmed: true };
+  if (cp.type === 'output') return { output: 'none' };
+  return {};
+}
+
+/** 用同一条真实 agent 链跑一条 eval 用例, 落 RunRecord 并评分。 */
+async function runOneCase(ec) {
+  const ctx = await buildAgentContext({});
+  const am = Models.activeModel(config.llm) || {};
+  try {
+    const result = await ctx.agent.run(
+      ec.question,
+      { history: [], state: null, autoTables: true, cancel: null, withPlan: true },
+      () => {},
+      autoCheckpoint
+    );
+    const run = buildRunRecord({
+      question: ec.question, source: 'eval', conversationId: null, result,
+      provider: 'openai-compatible', model: am.model || ''
+    });
+    const rr = runsStore.create(run);
+    const saved = rr.ok ? rr.run : run;
+    return { ok: true, run: saved, score: Scorer.scoreCase(ec, saved) };
+  } catch (e) {
+    const run = buildRunRecord({
+      question: ec.question, source: 'eval', conversationId: null, result: null,
+      error: e.message, provider: 'openai-compatible', model: am.model || ''
+    });
+    let saved = run;
+    try { const rr = runsStore.create(run); if (rr.ok) saved = rr.run; } catch (e2) {}
+    return { ok: false, error: e.message, run: saved, score: Scorer.scoreCase(ec, saved) };
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---- 运行记录 ----
+ipcMain.handle('run:list', (_e, filter) => ({ ok: true, runs: runsStore ? runsStore.list(filter || {}) : [] }));
+ipcMain.handle('run:get', (_e, id) => {
+  const r = runsStore && runsStore.get(id);
+  return r ? { ok: true, run: r } : { ok: false, error: '运行记录不存在' };
+});
+ipcMain.handle('run:handoff', (_e, id) => runsStore
+  ? runsStore.patch(id, { status: 'handoff', handoff: true, handoffAt: new Date().toISOString() })
+  : { ok: false, error: 'store 未初始化' });
+ipcMain.handle('run:annotate', (_e, payload) => {
+  const { id, annotation } = payload || {};
+  if (!runsStore) return { ok: false, error: 'store 未初始化' };
+  return runsStore.patch(id, { annotation: annotation || null, annotatedAt: new Date().toISOString() });
+});
+ipcMain.handle('run:delete', (_e, id) => runsStore ? runsStore.remove(id) : { ok: false, error: 'store 未初始化' });
+
+// ---- 评测 ----
+ipcMain.handle('eval:list', () => ({
+  ok: true,
+  cases: evalStore ? evalStore.listCases() : [],
+  batches: evalStore ? evalStore.listBatches().map((b) => Object.assign({}, b, { runCount: evalStore.listBatchRuns(b.id).length })) : [],
+  scorerVersion: Scorer.scorerVersion()
+}));
+ipcMain.handle('eval:caseCreate', (_e, input) => evalStore ? evalStore.saveCase(input) : { ok: false, error: 'store 未初始化' });
+ipcMain.handle('eval:caseUpdate', (_e, input) => evalStore ? evalStore.saveCase(input) : { ok: false, error: 'store 未初始化' });
+ipcMain.handle('eval:caseDelete', (_e, id) => evalStore ? evalStore.deleteCase(id) : { ok: false, error: 'store 未初始化' });
+ipcMain.handle('eval:caseFromRun', (_e, payload) => {
+  if (!runsStore || !evalStore) return { ok: false, error: 'store 未初始化' };
+  const run = runsStore.get((payload || {}).runId);
+  if (!run) return { ok: false, error: '运行记录不存在' };
+  const c = normalizeCase({ name: String(run.question || '').slice(0, 40), question: run.question, sourceRunId: run.id, tags: ['from-run'] });
+  return evalStore.saveCase(c);
+});
+ipcMain.handle('eval:runOne', async (_e, caseId) => {
+  if (!evalStore) return { ok: false, error: 'store 未初始化' };
+  const ec = evalStore.getCase(caseId);
+  if (!ec) return { ok: false, error: '用例不存在' };
+  return runOneCase(ec);
+});
+// 批次运行的取消标记
+const batchRunCancelFlags = new Map();
+
+function resolveCases(caseIds) {
+  const all = evalStore.listCases();
+  const map = new Map(all.map((c) => [c.id, c]));
+  const invalid = (caseIds || []).filter((id) => !map.has(id));
+  return { cases: (caseIds || []).map((id) => map.get(id)).filter(Boolean), invalid };
+}
+
+function sendBatchEvent(ev) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('eval:batchEvent', ev);
+}
+
+// 跑一次"批次运行": 逐条执行, 实时更新这条 run 的计数与结果。
+function runBatchRun(runId, cases) {
+  batchRunCancelFlags.set(runId, false);
+  const r0 = evalStore.getBatchRun(runId);
+  if (r0) evalStore.patchBatchRun(runId, { status: 'running', startedAt: new Date().toISOString(), currentIndex: 0, passed: 0, failed: 0, review: 0, errors: 0, caseResults: [], finishedAt: null });
+  (async () => {
+    for (let i = 0; i < cases.length; i++) {
+      if (batchRunCancelFlags.get(runId)) {
+        evalStore.patchBatchRun(runId, { status: 'cancelled', finishedAt: new Date().toISOString() });
+        sendBatchEvent({ runId, status: 'cancelled' });
+        batchRunCancelFlags.delete(runId);
+        return;
+      }
+      const ec = cases[i];
+      let r;
+      try { r = await runOneCase(ec); }
+      catch (e) { r = { ok: false, error: e.message, run: null, score: { status: 'ERROR', reason: e.message } }; }
+      const score = (r && r.score) || { status: 'ERROR' };
+      const st = score.status;
+      const rec = evalStore.getBatchRun(runId);
+      if (!rec) { batchRunCancelFlags.delete(runId); return; }
+      rec.caseResults = rec.caseResults || [];
+      rec.caseResults.push({
+        caseId: ec.id, name: ec.name, question: ec.question, status: st, score,
+        runId: r && r.run && r.run.id, finalReply: r && r.run && r.run.finalReply,
+        durationMs: (r && r.run && r.run.durationMs) || 0, error: (r && r.error) || null
+      });
+      if (st === 'PASS') rec.passed += 1;
+      else if (st === 'FAIL') rec.failed += 1;
+      else if (st === 'REVIEW') rec.review += 1;
+      else rec.errors += 1;
+      rec.currentIndex = i + 1;
+      evalStore.patchBatchRun(runId, rec);
+      sendBatchEvent({ runId, currentIndex: rec.currentIndex, total: rec.total, status: 'running' });
+    }
+    evalStore.patchBatchRun(runId, { status: 'done', finishedAt: new Date().toISOString() });
+    sendBatchEvent({ runId, status: 'done' });
+    batchRunCancelFlags.delete(runId);
+  })();
+}
+
+// 批次 = 一套用例集合 (定义)。可创建一次、运行多次。
+ipcMain.handle('eval:batchCreate', (_e, payload) => {
+  if (!evalStore) return { ok: false, error: 'store 未初始化' };
+  const p = payload || {};
+  if (!Array.isArray(p.caseIds) || !p.caseIds.length) return { ok: false, code: 400, error: '请至少选择一条用例' };
+  const { cases, invalid } = resolveCases(p.caseIds);
+  if (invalid.length) return { ok: false, code: 400, error: '存在无效 caseId: ' + invalid.join(', '), invalid };
+  const rec = {
+    name: p.name || ('批次 ' + new Date().toISOString().slice(0, 16).replace('T', ' ')),
+    versionLabel: p.versionLabel || '',
+    caseIds: cases.map((c) => c.id),
+    caseSetHash: sha1short(cases.map((c) => c.id).join('|')),
+    createdAt: new Date().toISOString()
+  };
+  const batchId = evalStore.createBatch(rec).batch.id;
+  return { ok: true, batchId };
+});
+
+// 运行一个批次 -> 新建一次"批次运行", 返回 runId (每次运行一份报告)
+ipcMain.handle('eval:batchRun', (_e, payload) => {
+  if (!evalStore) return { ok: false, error: 'store 未初始化' };
+  const batchId = (payload || {}).batchId;
+  const batch = batchId && evalStore.getBatch(batchId);
+  if (!batch) return { ok: false, code: 404, error: '批次不存在' };
+  const { cases, invalid } = resolveCases(batch.caseIds);
+  if (!cases.length || invalid.length) return { ok: false, error: '批次里的用例已失效，请重新建批次' };
+  const am = Models.activeModel(config.llm) || {};
+  const rec = {
+    batchId, batchName: batch.name || '', versionLabel: batch.versionLabel || '',
+    caseIds: cases.map((c) => c.id), caseSetHash: sha1short(cases.map((c) => c.id).join('|')),
+    scorerVersion: Scorer.scorerVersion(), provider: 'openai-compatible', model: am.model || '',
+    params: {}, status: 'queued', currentIndex: 0, total: cases.length,
+    passed: 0, failed: 0, review: 0, errors: 0, caseResults: [], createdAt: new Date().toISOString()
+  };
+  const runId = evalStore.createBatchRun(rec).run.id;
+  runBatchRun(runId, cases);
+  return { ok: true, runId, batchId };
+});
+
+ipcMain.handle('eval:batchRuns', (_e, payload) => {
+  const batchId = (payload || {}).batchId;
+  return { ok: true, runs: evalStore ? evalStore.listBatchRuns(batchId) : [] };
+});
+
+ipcMain.handle('eval:batchRunGet', (_e, id) => {
+  const r = evalStore && evalStore.getBatchRun(id);
+  return r ? { ok: true, run: r } : { ok: false, code: 404, error: '批次运行不存在' };
+});
+
+ipcMain.handle('eval:batchCancel', (_e, runId) => {
+  if (!runId) return { ok: false, error: '缺少 runId' };
+  batchRunCancelFlags.set(runId, true);
+  return { ok: true };
+});
+ipcMain.handle('eval:batchGet', (_e, id) => {
+  const b = evalStore && evalStore.getBatch(id);
+  return b ? { ok: true, batch: b } : { ok: false, code: 404, error: '批次不存在' };
+});
+ipcMain.handle('eval:compare', (_e, payload) => {
+  const { a, b } = payload || {};
+  const A = evalStore && evalStore.getBatchRun(a);
+  const B = evalStore && evalStore.getBatchRun(b);
+  if (!A || !B) return { ok: false, error: '批次运行不存在' };
+  return { ok: true, result: Compare.compareBatches(A, B) };
+});
+
+// ---- 规划器配置 (允许的能力 / Skill / 必选能力) ----
+function plannerConfig() {
+  const p = (config.planner && typeof config.planner === 'object') ? config.planner : {};
+  const picked = Array.isArray(p.allowedCaps) ? p.allowedCaps.filter((c) => Planner.CAPABILITIES.includes(c)) : [];
+  const caps = picked.length ? picked : Planner.CAPABILITIES.slice();
+  const enabledSkills = (config.skills && config.skills.enabled) || [];
+  const allowedSkills = Array.isArray(p.allowedSkills) ? p.allowedSkills.filter((s) => enabledSkills.includes(s)) : enabledSkills;
+  const mandatory = Array.isArray(p.mandatory) ? p.mandatory.filter((c) => caps.includes(c)) : [];
+  const allTools = Planner.CAPABILITIES.map((id) => ({ id, label: (Planner.TOOL_LABELS && Planner.TOOL_LABELS[id]) || id }));
+  return { allowedCaps: caps, allowedSkills, mandatory, allTools, allCaps: Planner.CAPABILITIES.slice(), enabledSkills };
+}
+
+ipcMain.handle('planner:config', () => Object.assign({ ok: true }, plannerConfig()));
+
+ipcMain.handle('planner:config:save', (_e, payload) => {
+  const p = payload || {};
+  config.planner = {
+    allowedCaps: Array.isArray(p.allowedCaps) ? p.allowedCaps.filter((c) => Planner.CAPABILITIES.includes(c)) : Planner.CAPABILITIES.slice(),
+    allowedSkills: Array.isArray(p.allowedSkills) ? p.allowedSkills.slice() : null,
+    mandatory: Array.isArray(p.mandatory) ? p.mandatory.slice() : []
+  };
+  saveConfig();
+  return Object.assign({ ok: true }, plannerConfig());
+});
+
+// ---- 规划器预览 (只预览不执行) ----
+ipcMain.handle('planner:preview', async (_e, payload) => {
+  const question = String((payload && payload.question) || '').trim();
+  if (!question) return { ok: false, error: '请输入测试问题' };
+  let ctx = null;
+  try {
+    ctx = await buildAgentContext({});
+    let route = null;
+    try {
+      const v = await ctx.agent._classifyIntent(question, []);
+      route = v && v.kind;
+    } catch (e) { /* 闸门失败不影响规划预览 */ }
+    const pc = plannerConfig();
+    const plannerPromptText = Planner.buildPlannerPrompt({
+      userInput: question,
+      availableTables: [],
+      engines: (config.engines || []).map((e) => ({ id: e.id, name: e.name })),
+      skills: pc.allowedSkills,
+      capabilities: pc.allowedCaps,
+      mandatory: pc.mandatory
+    });
+    const out = await ctx.llm.chatStep(
+      [
+        { role: 'system', content: Planner.SYSTEM },
+        { role: 'user', content: plannerPromptText }
+      ],
+      [], { temperature: 0.2, maxTokens: 1200 }
+    );
+    const plan = Planner.parsePlan(out && out.content);
+    const validation = PlanValidator.validatePlan(plan, { availableTables: [], question, allowedCaps: pc.allowedCaps, mandatory: pc.mandatory });
+    return { ok: true, route, plan, validation, system: Planner.SYSTEM, prompt: plannerPromptText };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    if (ctx) await ctx.close();
+  }
+});
+
+// 规划器的提示词 (SYSTEM + 模板)。只读展示 —— 目前硬编码在 lib/planner.js。
+ipcMain.handle('planner:prompt', () => {
+  const pc = plannerConfig();
+  return {
+    ok: true,
+    system: Planner.SYSTEM,
+    template: Planner.buildPlannerPrompt({
+      userInput: '（你的问题会填在这里）',
+      availableTables: [],
+      engines: (config.engines || []).map((e) => ({ id: e.id, name: e.name })),
+      skills: pc.allowedSkills,
+      capabilities: pc.allowedCaps,
+      mandatory: pc.mandatory
+    })
+  };
 });
 
 ipcMain.handle('report:export', async (_e, { html, md, baseName, format }) => {

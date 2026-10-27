@@ -230,6 +230,7 @@ function bindEvents() {
   $('btnAddModel').addEventListener('click', () => openModelModal(''));
   $$('#modalModel [data-close]').forEach((el) => el.addEventListener('click', closeModelModal));
   $('btnSaveModel').addEventListener('click', saveModel);
+  $('btnTestModel').addEventListener('click', testModel);
   $('mmModel').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); saveModel(); }
   });
@@ -649,6 +650,7 @@ function switchView(view) {
   if (view === 'skills') renderSkillList();
   if (view === 'tools') renderMcpList();
   if (view === 'intools') renderInternalTools();
+  if (view === 'evalplatform' && typeof initEvalPlatform === 'function') initEvalPlatform();
   if (view === 'settings') renderSettings();
   if (view === 'changelog') renderChangelogPage();
   if (view === 'space') renderSpace();
@@ -2264,6 +2266,38 @@ function applyEmptyLayout(empty) {
   renderTips();
 }
 
+/** 结构化执行 Trace 的 HTML (对照 035-Eval 的 StepsList)。 */
+function traceStepsHtml(steps) {
+  if (!Array.isArray(steps) || !steps.length) return '<div class="muted">无 Trace</div>';
+  const TYPE = { planner: 'Planner', tool: 'Tool', skill: 'Skill', final: 'Final', risk: 'Risk' };
+  const STATUS = {
+    success: ['成功', 'pill-PASS'], error: ['失败', 'pill-FAIL'],
+    timeout: ['超时', 'pill-REVIEW'], skipped: ['跳过', 'pill-cancelled']
+  };
+  const pretty = (v) => {
+    if (v === undefined) return '—';
+    if (typeof v === 'string') return v;
+    try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); }
+  };
+  return '<ol class="trace-steps">' + steps.map((s) => {
+    const t = s.type || 'tool';
+    const st = STATUS[s.status] || STATUS.success;
+    return '<li class="trace-step">'
+      + '<div class="trace-step-head">'
+      + `<span class="trace-type trace-type-${escapeAttr(t)}">${escapeHtml(TYPE[t] || t)}</span>`
+      + `<span class="trace-step-name">${escapeHtml(s.name || '')}</span>`
+      + `<span class="pill ${st[1]}">${st[0]}</span>`
+      + `<span class="trace-ms">${Number(s.durationMs) || 0}ms</span>`
+      + '</div>'
+      + (s.error ? `<div class="trace-step-err">${escapeHtml(s.error)}</div>` : '')
+      + '<details class="trace-io"><summary>查看输入 / 输出</summary>'
+      + '<div class="trace-io-grid">'
+      + `<div><div class="trace-io-label">输入</div><pre>${escapeHtml(pretty(s.input))}</pre></div>`
+      + `<div><div class="trace-io-label">输出</div><pre>${escapeHtml(pretty(s.output))}</pre></div>`
+      + '</div></details></li>';
+  }).join('') + '</ol>';
+}
+
 function renderMessage(msg, index) {
   const el = document.createElement('div');
   el.className = 'message ' + (msg.role === 'user' ? 'user' : 'assistant');
@@ -2381,6 +2415,22 @@ function updateMessageNode(el, msg, index) {
     applyStepsOpen(host);
   } else if (existingSteps) {
     existingSteps.remove();
+  }
+
+  // 结构化执行 Trace (参考 035-Eval): 默认收起, 点开看每一步的输入/输出。
+  const existingTrace = el.querySelector('.msg-trace');
+  if (msg.role === 'assistant' && msg.traceSteps && msg.traceSteps.length) {
+    let host = existingTrace;
+    if (!host) {
+      host = document.createElement('details');
+      host.className = 'msg-trace';
+      host.innerHTML = '<summary class="msg-trace-head"></summary><div class="msg-trace-body"></div>';
+      el.appendChild(host);
+    }
+    host.querySelector('.msg-trace-head').textContent = '执行 Trace · ' + msg.traceSteps.length + ' 步';
+    host.querySelector('.msg-trace-body').innerHTML = traceStepsHtml(msg.traceSteps);
+  } else if (existingTrace) {
+    existingTrace.remove();
   }
 
   // 报告卡片只创建一次, 避免 iframe 被反复重建
@@ -4531,10 +4581,7 @@ function openModelModal(id) {
   $('mmModel').value = m ? (m.model || '') : '';
   // 主进程不下发明文密钥, 所以这里永远是空的 —— 留空 = 不修改已保存的那把
   $('mmApiKey').value = '';
-  $('mmApiKey').placeholder = (m && m.apiKeySet) ? '已保存 (留空表示不修改)' : 'sk-...';
-  $('mmKeyHint').textContent = (m && m.apiKeySet)
-    ? '出于安全考虑密钥不再回显; 留空表示不修改已保存的那把。'
-    : '密钥只存在本机配置文件里, 不会下发到界面。';
+  $('mmApiKey').placeholder = (m && m.apiKeySet) ? '已保存' : 'sk-...';
   $('mmTemp').value = m ? (m.temperature ?? 0.2) : 0.2;
   $('mmMaxTokens').value = m ? (m.maxTokens || 2048) : 2048;
   $('mmCtxLimit').value = m ? (m.contextLimit || 128000) : 128000;
@@ -4583,6 +4630,45 @@ async function saveModel() {
   } catch (e) {
     status.textContent = '保存失败: ' + e.message;
     status.className = 'form-status err';
+  }
+}
+
+async function testModel() {
+  const status = $('mmStatus');
+  const model = $('mmModel').value.trim();
+  if (!model) {
+    status.textContent = '请先填写模型名';
+    status.className = 'form-status err';
+    return;
+  }
+  const btn = $('btnTestModel');
+  status.textContent = '正在测试…';
+  status.className = 'form-status';
+  if (btn) btn.disabled = true;
+  const payload = {
+    baseURL: $('mmBaseURL').value.trim() || 'https://api.openai.com/v1',
+    model,
+    temperature: Number($('mmTemp').value),
+    maxTokens: Number($('mmMaxTokens').value),
+    contextLimit: Number($('mmCtxLimit').value)
+  };
+  if (editingModelId) payload.id = editingModelId;
+  const typedKey = $('mmApiKey').value.trim();
+  if (typedKey) payload.apiKey = typedKey;
+  try {
+    const res = await api.config.testModel(payload);
+    if (res && res.ok) {
+      status.textContent = `连接成功 · ${res.model} · ${res.elapsedMs}ms${res.reply ? ' · 回复: ' + res.reply : ''}`;
+      status.className = 'form-status ok';
+    } else {
+      status.textContent = '连接失败: ' + ((res && res.error) || '未知错误');
+      status.className = 'form-status err';
+    }
+  } catch (e) {
+    status.textContent = '测试失败: ' + e.message;
+    status.className = 'form-status err';
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -4851,6 +4937,9 @@ async function sendTask() {
   // saveMessages), 每次送总量过去会越加越多。
   if (result.result) {
     if (result.result.elapsedMs != null) assistantMsg.elapsedMs = result.result.elapsedMs;
+    if (Array.isArray(result.result.traceSteps) && result.result.traceSteps.length) {
+      assistantMsg.traceSteps = result.result.traceSteps;
+    }
     if (result.result.usage) {
       assistantMsg.usage = result.result.usage;
       state.convUsage = state.convUsage || { input: 0, output: 0, calls: 0 };
@@ -5543,6 +5632,10 @@ function handleAgentEvent(ev) {
       }
       break;
     }
+    case 'trace_step':
+      if (!Array.isArray(last.traceSteps)) last.traceSteps = [];
+      last.traceSteps.push(ev.step);
+      break;
     case 'error':
       last.content = (last.content || '') + '\n[错误] ' + ev.message;
       break;

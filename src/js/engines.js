@@ -2322,7 +2322,6 @@ function engAiRenderLog() {
   if (!log.length) {
     box.innerHTML = `<div class="eng-ai-empty">
       用大白话说清这张卡要怎么判断，我来搭。<br><br>
-      比如：查这批采购订单明细的入库状态，如果明细已入库、但对应的待对账入库单没有数据，就报「存在问题」，其他情况报「正常」。<br><br>
       这张卡已经有东西了也没关系 —— 我只在你现有的节点上改，不会推倒重来。改完会自己跑一遍确认能出结论。
     </div>`;
     return;
